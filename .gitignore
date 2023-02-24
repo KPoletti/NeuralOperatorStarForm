@@ -1,0 +1,5 @@
+__pycache__/*
+utils/__pycache__/*
+input.ini
+results/*
+*.log
