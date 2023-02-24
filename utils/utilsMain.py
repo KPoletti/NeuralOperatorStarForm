@@ -57,6 +57,7 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
     if isDensity:
         filename = params.TRAIN_PATH
         fullData = torch.load(filename)[:, :: params.sub, :: params.sub]
+        fullData = torch.log10(fullData).float()
     else:
         filename = params.TIME_PATH
         # load in data about each time step

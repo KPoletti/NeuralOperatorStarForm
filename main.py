@@ -1,7 +1,7 @@
 import os
 from utils.utilsMain import *
 import torch
-import networks
+import networks.networkUtils as myNet
 import argparse
 import logging
 import time
@@ -36,6 +36,36 @@ def main(params, S=800):
         params, S
     )
     logging.info(f"Data loaded in {time.time() - dataTime} seconds")
+    # initialize device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    ################################################################
+    # create neural network
+    ################################################################
+    logging.info("Creating neural network")
+    netTime = time.time()
+    # create neural network
+    model = myNet.initializeNetwork(params)
+
+    # move to GPU
+    model = model.to(device)
+    # if params.NN == "MNO":
+    # initailize dispative regularization
+    # diss_loss = myNet.dissipativeRegularizer(
+    #     params=params, model=model, x=vars, device=device
+    # )
+    logging.info(f"Neural network created in {time.time() - netTime} seconds")
+    ################################################################
+    # train neural network
+    ################################################################
+    logging.info("Training neural network")
+    trainTime = time.time()
+    # train neural network
+    Trainer = myNet.Trainer(
+        model=model,
+        params=params,
+        device=device,
+    )
+    Trainer.train(trainLoader, testLoader, output_encoder, regularizer=True)
 
 
 if __name__ == "__main__":
