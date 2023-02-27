@@ -17,11 +17,11 @@ TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
 TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
 
 # Neural network parameters
-NN = "MNO"
-input_channels = 4
+NN = "FNO3d"  # "FNO3d", "MNO", "FNO"
+input_channels = 3
 output_channels = 1
-modes = 16
-width = 32
+modes = 12
+width = 10
 encoder = True
 if NN == "MNO":
     out_dim = 1
@@ -43,6 +43,7 @@ scheduler_step = 20
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
-loss_fn = H1Loss()
-level = "INFO"
+loss_fn = LpLoss(d=2)
+level = "DEBUG"
 file = "output.log"
+log_interval = 100

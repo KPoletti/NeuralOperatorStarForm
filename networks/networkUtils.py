@@ -1,12 +1,30 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from neuralop.models import TFNO3d, TFNO2d, TFNO
 from neuralop.training.losses import LpLoss, H1Loss
 from dataclasses import dataclass
-import configmypy
-
 import numpy as np
+import input as param
+import logging
+
+logger = logging.getLogger(__name__)
+
+# grab the ending of the density file with .pt
+densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
+
+# create output folder
+path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}"
+if not os.path.exists(f"results/{path}"):
+    os.makedirs(f"results/{path}")
+logger.setLevel(param.level)
+fileHandler = logging.FileHandler(f"results/{path}/network.log", mode="w")
+formatter = logging.Formatter(
+    "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
+)
+fileHandler.setFormatter(formatter)
+logger.addHandler(fileHandler)
 
 # define the network architecture
 
@@ -25,7 +43,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
         model = TFNO3d(
             n_modes_depth=params.modes,
             n_modes_width=params.modes,
-            n_modes_height=params.modes,
+            n_modes_height=2,
             hidden_channels=params.width,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
@@ -42,6 +60,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             use_mlp=True,
             mlp={"expansion": 0.5, "dropout": 0},
         )
+    logger.debug(model)
     return model
 
 
@@ -103,38 +122,57 @@ class Trainer(object):
         # initialize the regularizer
         # start training
         for epoch in range(self.params.epochs):
-            with torch.enable_grad():
-                self.model.train()
-                for batch_idx, sample in enumerate(train_loader):
-                    data, target = sample["x"].to(self.device), sample["y"].to(
-                        self.device
-                    )
-                    self.optimizer.zero_grad()
-                    output = self.model(data)
-                    loss = self.loss(output, target)
-                    if self.regularizer:
-                        loss += self.dissipativeRegularizer(data, self.device)
-                    loss.backward()
-                    self.optimizer.step()
-                    if batch_idx % self.params.log_interval == 0:
-                        print(
-                            "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
-                                epoch,
-                                batch_idx * len(data),
-                                len(train_loader.dataset),
-                                100.0 * batch_idx / len(train_loader),
-                                loss.item(),
-                            )
+            self.model.train()
+            loss = 0
+            for batch_idx, sample in enumerate(train_loader):
+                data, target = sample["x"].to(self.device), sample["y"].to(self.device)
+                self.optimizer.zero_grad()
+                output = self.model(data).view(
+                    self.params.batch_size,
+                    self.params.S,
+                    self.params.S,
+                    self.params.T,
+                )
+
+                # decode the target
+                target = output_encoder.decode(target)
+                # decode the output
+                output = output_encoder.decode(output)
+                #
+                loss = self.loss(
+                    output.view(self.params.batch_size, -1),
+                    target.view(self.params.batch_size, -1),
+                )
+                if regularizer:
+                    loss += self.dissipativeRegularizer(data, self.device)
+                loss.backward()
+                self.optimizer.step()
+                if batch_idx % self.params.log_interval == 0:
+                    print(
+                        "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
+                            epoch,
+                            batch_idx * len(data),
+                            len(train_loader.dataset),
+                            100.0 * batch_idx / len(train_loader),
+                            loss.item(),
                         )
+                    )
             with torch.no_grad():
                 self.model.eval()
                 test_loss = 0
                 for data, target in test_loader:
-                    data, target = data.to(self.device), target.to(self.device)
-                    output = self.model(data)
-                    test_loss += self.loss(output, target).item()
+                    data, target = sample["x"].to(self.device), sample["y"].to(
+                        self.device
+                    )
+                    output = self.model(data).view(
+                        self.params.batch_size,
+                        self.params.S,
+                        self.params.S,
+                        self.params.T,
+                    )
+                    test_loss += self.loss(
+                        output.view(self.params.batch_size, -1),
+                        target.view(self.params.batch_size, -1),
+                    ).item()
                 test_loss /= len(test_loader.dataset)
                 print("Test set: Average loss: {:.4f}".format(test_loss))
-
-
-# what is pytorch device type?

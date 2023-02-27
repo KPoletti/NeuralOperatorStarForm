@@ -4,8 +4,29 @@ import sys
 import torch
 from dataclasses import dataclass
 import pandas as pd
+
+# from neuralop.data.transforms import PositionalEmbedding
 from neuralop.utils import UnitGaussianNormalizer
-from neuralop.data.tensor_dataset import TensorDataset
+from neuralop.datasets.tensor_dataset import TensorDataset
+import input as param
+import logging
+
+logger = logging.getLogger(__name__)
+
+# grab the ending of the density file with .pt
+densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
+
+# create output folder
+path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}"
+if not os.path.exists(f"results/{path}"):
+    os.makedirs(f"results/{path}")
+logger.setLevel(param.level)
+fileHandler = logging.FileHandler(f"results/{path}/util.log", mode="w")
+formatter = logging.Formatter(
+    "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
+)
+fileHandler.setFormatter(formatter)
+logger.addHandler(fileHandler)
 
 
 def dataSplit(params) -> tuple:
@@ -95,6 +116,56 @@ def timestepSplit(
     return dataSet_a, dataSet_u, dataInfo_a, dataInfo_u
 
 
+class PositionalEmbedding:
+    """Positional embedding for 2D data, from neuraloperator github"""
+
+    def __init__(self, grid_boundaries, channel_dim):
+        self.grid_boundaries = grid_boundaries
+        self.channel_dim = channel_dim
+        self._grid = None
+
+    def grid(self, data):
+        if self._grid is None:
+            self._grid = addGrid(
+                data, grid_boundaries=self.grid_boundaries, channel_dim=self.channel_dim
+            )
+        return self._grid
+
+    def __call__(self, data):
+        x, y = self.grid(data)
+        # x, y = x.squeeze(self.channel_dim), y.squeeze(self.channel_dim)
+
+        return torch.cat((data, x, y), dim=0)
+
+
+def addGrid(
+    input_tensor, grid_boundaries: list = [[-2.5, 2.5], [-2.5, 2.5]], channel_dim=0
+):
+    """
+    Appends grid positional encoding to an input tensor, concatenating as additional dimensions along the channels
+    This is a modified version of the function in neuralop.data.transforms to allow work with 4D tensors
+    """
+    shape = list(input_tensor.shape)
+    if len(shape) == 2:
+        height, width = shape
+    else:
+        _, _, height, width = shape
+
+    xt = torch.linspace(grid_boundaries[0][0], grid_boundaries[0][1], height + 1)[:-1]
+    yt = torch.linspace(grid_boundaries[1][0], grid_boundaries[1][1], width + 1)[:-1]
+
+    grid_x, grid_y = torch.meshgrid(xt, yt, indexing="ij")
+
+    if len(shape) == 2:
+        grid_x = grid_x.repeat(1, 1).unsqueeze(channel_dim)
+        grid_y = grid_y.repeat(1, 1).unsqueeze(channel_dim)
+    else:
+        grid_x = grid_x.repeat(1, 1).unsqueeze(0).unsqueeze(channel_dim)
+        grid_y = grid_y.repeat(1, 1).unsqueeze(0).unsqueeze(channel_dim)
+
+    return grid_x, grid_y
+
+
 def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     """
     Loads in the data,
@@ -115,9 +186,14 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     # TODO: Write tests for this function
 
     trainSize, testsSize, validSize = dataSplit(params)
+    logger.debug(f"Full size: {trainSize + testsSize + validSize}")
+    logger.debug(f"Train size: {trainSize}")
+    logger.debug(f"Test size: {testsSize}")
+    logger.debug(f"Valid size: {validSize}")
     # load data
     trainData, testsData, validData = loadData(params, isDensity=True)
     trainTime, testsTime, validTime = loadData(params, isDensity=False)
+    logger.debug(f"trainData shape: {trainData.shape}")
     # divide data into time step and timestep to predict
 
     # TODO: Figure out how to include the timesteps in the data
@@ -131,16 +207,6 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         validData, validTime, params
     )
 
-    if params.encoder:
-        # normailze input data
-        input_encoder = UnitGaussianNormalizer(trainData_a)
-        trainData_a = input_encoder.encode(trainData_a)
-        testsData_a = input_encoder.encode(testsData_a)
-        validData_a = input_encoder.encode(validData_a)
-        # normalize output data
-        output_encoder = UnitGaussianNormalizer(trainData_u)
-        trainData_u = output_encoder.encode(trainData_u)
-
     # check if nn contains FNO
     if "FNO3d" in params.NN:
         trainData_a = trainData_a.reshape(trainSize, S, S, 1, params.T_in).repeat(
@@ -152,10 +218,50 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         validData_a = validData_a.reshape(validSize, S, S, 1, params.T_in).repeat(
             [1, 1, 1, params.T, 1]
         )
+        trainData_a = trainData_a.permute(0, 3, 4, 1, 2)
+        testsData_a = testsData_a.permute(0, 3, 4, 1, 2)
+        validData_a = validData_a.permute(0, 3, 4, 1, 2)
+
+        # trainData_u = trainData_u.reshape(trainSize, S, S, 1, params.T_in).repeat(
+        #     [1, 1, 1, params.T, 1]
+        # )
+        # testsData_u = testsData_u.reshape(testsSize, S, S, 1, params.T_in).repeat(
+        #     [1, 1, 1, params.T, 1]
+        # )
+        # validData_u = validData_u.reshape(validSize, S, S, 1, params.T_in).repeat(
+        #     [1, 1, 1, params.T, 1]
+        # )
+        # trainData_u = trainData_u.permute(0, 3, 4, 1, 2)
+        # testsData_u = testsData_u.permute(0, 3, 4, 1, 2)
+        # validData_u = validData_u.permute(0, 3, 4, 1, 2)
+    if params.encoder:
+        # normailze input data
+        input_encoder = UnitGaussianNormalizer(trainData_a)
+        trainData_a = input_encoder.encode(trainData_a)
+        testsData_a = input_encoder.encode(testsData_a)
+        validData_a = input_encoder.encode(validData_a)
+        # normalize output data
+        output_encoder = UnitGaussianNormalizer(trainData_u)
+        trainData_u = output_encoder.encode(trainData_u)
+
+    # define the grid
+    grid_bounds = [[-2.5, 2.5], [-2.5, 2.5]]
     # Load the data into a tensor dataset
-    trainDataset = TensorDataset(trainData_a, trainData_u)
-    testsDataset = TensorDataset(testsData_a, testsData_u)
-    validDataset = TensorDataset(validData_a, validData_u)
+    trainDataset = TensorDataset(
+        trainData_a,
+        trainData_u,
+        transform_x=PositionalEmbedding(grid_bounds, 0),
+    )
+    testsDataset = TensorDataset(
+        testsData_a,
+        testsData_u,
+        transform_x=PositionalEmbedding(grid_bounds, 0),
+    )
+    validDataset = TensorDataset(
+        validData_a,
+        validData_u,
+        transform_x=PositionalEmbedding(grid_bounds, 0),
+    )
     # Create the data loader
     trainLoader = torch.utils.data.DataLoader(
         trainDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
