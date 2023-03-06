@@ -16,11 +16,15 @@ def main(params, S=800):
     # check if path exists
     if not os.path.exists(f"results/{path}"):
         os.makedirs(f"results/{path}")
-
+        os.makedirs(f"results/{path}/logs")
+        os.makedirs(f"results/{path}/models")
+        os.makedirs(f"results/{path}/plots")
+        os.makedirs(f"results/{path}/data")
+    print(f"Output folder for {path}")
     # SET UP LOGGING
     logger = logging.getLogger(__name__)
     logger.setLevel(params.level)
-    fileHandler = logging.FileHandler(f"results/{path}/output.log", mode="w")
+    fileHandler = logging.FileHandler(f"results/{path}/logs/output.log", mode="w")
     formatter = logging.Formatter(
         "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
     )
@@ -34,9 +38,14 @@ def main(params, S=800):
     ################################################################
     logger.info("........Loading data........")
     dataTime = time.time()
-    trainLoader, testLoader, validLoader, output_encoder = prepareDataForTraining(
-        params, params.S
-    )
+    trainTime, testsTime, validTime = loadData(params, isDensity=False)
+    (
+        trainLoader,
+        testLoader,
+        validLoader,
+        input_encoder,
+        output_encoder,
+    ) = prepareDataForTraining(params, params.S)
     logger.info(f"Data loaded in {time.time() - dataTime} seconds")
     # initialize device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -52,11 +61,6 @@ def main(params, S=800):
     model = model.to(device)
     output_encoder.cuda()
     # log the model to debug
-    # if params.NN == "MNO":
-    # initailize dispative regularization
-    # diss_loss = myNet.dissipativeRegularizer(
-    #     params=params, model=model, x=vars, device=device
-    # )
     logger.info(f"Neural network created in {time.time() - netTime} seconds")
     ################################################################
     # train neural network
@@ -70,6 +74,18 @@ def main(params, S=800):
         device=device,
     )
     Trainer.train(trainLoader, testLoader, output_encoder)
+    ################################################################
+    # test neural network
+    ################################################################
+    logger.info("........Testing neural network........")
+    testTime = time.time()
+    # test neural network
+    Trainer.evaluate(
+        validLoader,
+        validTime,
+        output_encoder=output_encoder,
+        input_encoder=input_encoder,
+    )
 
 
 if __name__ == "__main__":
