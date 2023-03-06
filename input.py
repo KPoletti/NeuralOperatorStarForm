@@ -5,6 +5,7 @@ from utils.dissipative_utils import (
 )
 from neuralop.training.losses import LpLoss, H1Loss
 
+# Data parameters
 mu = 2
 dN = 1
 sub = 2
@@ -36,7 +37,7 @@ if NN == "MNO":
         (525 * S) + radius,
     )  # inner and outer radii, in L2 norm of function space
 
-
+# Training parameters
 epochs = 2
 lr = 0.001
 scheduler_step = 20
@@ -47,3 +48,9 @@ loss_fn = LpLoss(d=2)
 level = "DEBUG"
 file = "output.log"
 log_interval = 100
+
+# Option to Save NN
+saveNeuralNetwork = True
+
+# Option to create plots
+doPlot = True
