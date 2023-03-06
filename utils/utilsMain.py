@@ -18,10 +18,15 @@ densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
 
 # create output folder
 path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}"
-if not os.path.exists(f"results/{path}"):
-    os.makedirs(f"results/{path}")
+if not os.path.exists(f"NeuralOperatorStarForm/results/{path}/logs"):
+    os.makedirs(f"NeuralOperatorStarForm/results/{path}/logs")
+    os.makedirs(f"NeuralOperatorStarForm/results/{path}/models")
+    os.makedirs(f"NeuralOperatorStarForm/results/{path}/plots")
+    os.makedirs(f"NeuralOperatorStarForm/results/{path}/data")
 logger.setLevel(param.level)
-fileHandler = logging.FileHandler(f"results/{path}/util.log", mode="w")
+fileHandler = logging.FileHandler(
+    f"NeuralOperatorStarForm/results/{path}/logs/util.log", mode="w"
+)
 formatter = logging.Formatter(
     "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
 )
@@ -133,7 +138,6 @@ class PositionalEmbedding:
 
     def __call__(self, data):
         x, y = self.grid(data)
-        # x, y = x.squeeze(self.channel_dim), y.squeeze(self.channel_dim)
 
         return torch.cat((data, x, y), dim=0)
 
@@ -222,18 +226,6 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         testsData_a = testsData_a.permute(0, 3, 4, 1, 2)
         validData_a = validData_a.permute(0, 3, 4, 1, 2)
 
-        # trainData_u = trainData_u.reshape(trainSize, S, S, 1, params.T_in).repeat(
-        #     [1, 1, 1, params.T, 1]
-        # )
-        # testsData_u = testsData_u.reshape(testsSize, S, S, 1, params.T_in).repeat(
-        #     [1, 1, 1, params.T, 1]
-        # )
-        # validData_u = validData_u.reshape(validSize, S, S, 1, params.T_in).repeat(
-        #     [1, 1, 1, params.T, 1]
-        # )
-        # trainData_u = trainData_u.permute(0, 3, 4, 1, 2)
-        # testsData_u = testsData_u.permute(0, 3, 4, 1, 2)
-        # validData_u = validData_u.permute(0, 3, 4, 1, 2)
     if params.encoder:
         # normailze input data
         input_encoder = UnitGaussianNormalizer(trainData_a)
@@ -272,4 +264,4 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     validLoader = torch.utils.data.DataLoader(
         validDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
     )
-    return trainLoader, testLoader, validLoader, output_encoder
+    return trainLoader, testLoader, validLoader, input_encoder, output_encoder
