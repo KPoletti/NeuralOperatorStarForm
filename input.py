@@ -4,25 +4,42 @@ from utils.dissipative_utils import (
     linear_scale_dissipative_target,
 )
 from neuralop.training.losses import LpLoss, H1Loss
+import math
 
 # Data parameters
 mu = 2
 dN = 1
-sub = 2
-S = 800 // sub
+sub = 1
+# Pooling parameters
+poolKernel = 4  # set to 0 to disable pooling
+poolStride = 4  # set to 0 to disable pooling
+
+S = 800
+# calculate the size of the output of the pooling layer from
+# https://pytorch.org/docs/stable/generated/torch.nn.AvgPool2d.html
+if poolKernel > 0:
+    S = math.floor((S - poolKernel) / poolStride + 1)
 T = 1
 T_in = 1
 split = [0.7, 0.2, 0.1]
 DATA_PATH = "../dataToSend/TrainingData/"
 TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
 TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
+log = True
+N = 874
+
+# DATA_PATH = "../dataToSend/CaltechData/"
+# TRAIN_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.pt"
+# TIME_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.h5"
+# log = False
+# N = 5000
 
 # Neural network parameters
-NN = "FNO3d"  # "FNO3d", "MNO", "FNO"
-input_channels = 3
+NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
+input_channels = 1
 output_channels = 1
-modes = 12
-width = 10
+modes = 10  # star Form 20
+width = 120  # star Form 100
 encoder = True
 if NN == "MNO":
     out_dim = 1
@@ -38,13 +55,13 @@ if NN == "MNO":
     )  # inner and outer radii, in L2 norm of function space
 
 # Training parameters
-epochs = 2
-lr = 0.001
-scheduler_step = 20
+epochs = 500
+lr = 0.01
+scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
-loss_fn = LpLoss(d=2)
+loss_fn = LpLoss(d=2, p=2)
 level = "DEBUG"
 file = "output.log"
 log_interval = 100

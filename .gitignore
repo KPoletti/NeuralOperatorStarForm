@@ -5,3 +5,6 @@ results/*
 *.log
 *.pyc
 *.json
+AnalyzeResults.ipynb
+DataVisuals/*
+tests/*

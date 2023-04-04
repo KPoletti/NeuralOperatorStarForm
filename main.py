@@ -1,18 +1,24 @@
 import os
 from utils.utilsMain import *
 import torch
+import numpy as np
 import networks.networkUtils as myNet
 import argparse
 import logging
 import time
 
 
-def main(params, S=800):
+def main(params):
     # grab the ending of the density file with .pt
     densityProfile = params.TRAIN_PATH.split("density")[-1].split(".")[0]
-    S = S // params.sub
+
     # create output folder
-    path = f"SF_{params.NN}_V100_ep{params.epochs}_m{params.modes}_w{params.width}_S{S}{densityProfile}"
+    path = (
+        f"SF_{params.NN}_V100_ep{params.epochs}"
+        f"_m{params.modes}_w{params.width}_S{params.S}"
+        f"{densityProfile}"
+        f"_E{params.encoder}"
+    )
     # check if path exists
     if not os.path.exists(f"results/{path}"):
         os.makedirs(f"results/{path}")
@@ -20,7 +26,6 @@ def main(params, S=800):
         os.makedirs(f"results/{path}/models")
         os.makedirs(f"results/{path}/plots")
         os.makedirs(f"results/{path}/data")
-    print(f"Output folder for {path}")
     # SET UP LOGGING
     logger = logging.getLogger(__name__)
     logger.setLevel(params.level)
@@ -56,17 +61,17 @@ def main(params, S=800):
     netTime = time.time()
     # create neural network
     model = myNet.initializeNetwork(params)
-
     # move to GPU
     model = model.to(device)
-    output_encoder.cuda()
+    if params.encoder:
+        output_encoder.cuda()
+        input_encoder.cuda()
     # log the model to debug
     logger.info(f"Neural network created in {time.time() - netTime} seconds")
     ################################################################
     # train neural network
     ################################################################
     logger.info("........Training neural network........")
-    trainTime = time.time()
     # train neural network
     Trainer = myNet.Trainer(
         model=model,
@@ -78,17 +83,22 @@ def main(params, S=800):
     # test neural network
     ################################################################
     logger.info("........Testing neural network........")
-    testTime = time.time()
     # test neural network
     Trainer.evaluate(
         validLoader,
         validTime,
         output_encoder=output_encoder,
         input_encoder=input_encoder,
+        savename="ValidationData",
     )
+
+    ## print output folder
+    print(f"Output folder for {path}")
 
 
 if __name__ == "__main__":
+    torch.manual_seed(0)
+    np.random.seed(0)
     ################################################################
     # Parser
     ################################################################
@@ -101,4 +111,4 @@ if __name__ == "__main__":
     parser.add_argument("--input", type=str, default="input", help="input file")
     params = __import__(parser.parse_args().input)
     # params = imp.load_source("params", parser.parse_args().input)
-    main(params, S=800)
+    main(params)
