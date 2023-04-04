@@ -17,16 +17,20 @@ logger = logging.getLogger(__name__)
 densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
 
 # create output folder
-path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}"
-if not os.path.exists(f"NeuralOperatorStarForm/results/{path}/logs"):
-    os.makedirs(f"NeuralOperatorStarForm/results/{path}/logs")
-    os.makedirs(f"NeuralOperatorStarForm/results/{path}/models")
-    os.makedirs(f"NeuralOperatorStarForm/results/{path}/plots")
-    os.makedirs(f"NeuralOperatorStarForm/results/{path}/data")
-logger.setLevel(param.level)
-fileHandler = logging.FileHandler(
-    f"NeuralOperatorStarForm/results/{path}/logs/util.log", mode="w"
+path = (
+    f"SF_{param.NN}_V100_ep{param.epochs}"
+    f"_m{param.modes}_w{param.width}_S{param.S}"
+    f"{densityProfile}"
+    f"_E{param.encoder}"
 )
+
+if not os.path.exists(f"results/{path}/logs"):
+    os.makedirs(f"results/{path}/logs")
+    os.makedirs(f"results/{path}/models")
+    os.makedirs(f"results/{path}/plots")
+    os.makedirs(f"results/{path}/data")
+logger.setLevel(param.level)
+fileHandler = logging.FileHandler(f"results/{path}/logs/util.log", mode="w")
 formatter = logging.Formatter(
     "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
 )
@@ -45,11 +49,35 @@ def dataSplit(params) -> tuple:
         testSize: int length of the testing data
         validSize: int length of the validation data
     """
-    tmp = pd.read_hdf(params.TIME_PATH, "table").shape[0]
+    if params.log:
+        tmp = pd.read_hdf(params.TIME_PATH, "table").shape[0]
+    else:
+        tmp = params.N
     trainSize = int(tmp * params.split[0])
     testSize = int(tmp * params.split[1])
     validSize = tmp - trainSize - testSize
     return trainSize, testSize, validSize
+
+
+# TODO: Add average pooling function
+def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
+    """
+    Average pool the data to reduce the size of the image
+    Input:
+        data: torch.tensor data to pool
+        params: input parameters from the input file
+    Output:
+        data: torch.tensor data after pooling
+    """
+    logger.debug(f"Pooling data with kernel size {params.poolKernel}")
+    # permute the data to pool across density
+    data = data.permute(0, 3, 1, 2)
+    data = torch.nn.functional.avg_pool2d(
+        data, kernel_size=params.poolKernel, stride=params.poolStride
+    )
+    # permute the data back to the original shape
+    data = data.permute(0, 2, 3, 1)
+    return data
 
 
 def loadData(params: dataclass, isDensity: bool) -> tuple:
@@ -82,8 +110,11 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
     """
     if isDensity:
         filename = params.TRAIN_PATH
-        fullData = torch.load(filename)[:, :: params.sub, :: params.sub]
-        fullData = torch.log10(fullData).float()
+        fullData = torch.load(filename)
+        if params.log:
+            fullData = torch.log10(fullData).float()
+        if params.poolKernel > 0:
+            fullData = averagePooling(fullData, params)
     else:
         filename = params.TIME_PATH
         # load in data about each time step
@@ -139,28 +170,30 @@ class PositionalEmbedding:
     def __call__(self, data):
         x, y = self.grid(data)
 
-        return torch.cat((data, x, y), dim=0)
+        return torch.cat((data, x, y), dim=-1)
 
 
 def addGrid(
     input_tensor, grid_boundaries: list = [[-2.5, 2.5], [-2.5, 2.5]], channel_dim=0
 ):
     """
-    Appends grid positional encoding to an input tensor, concatenating as additional dimensions along the channels
-    This is a modified version of the function in neuralop.data.transforms to allow work with 4D tensors
+    Appends grid positional encoding to an input tensor, concatenating as additional
+    dimensions along the channels
+    This is a modified version of the function in neuralop.data.transforms to allow work
+    with 4D tensors
     """
     shape = list(input_tensor.shape)
     if len(shape) == 2:
         height, width = shape
     else:
-        _, _, height, width = shape
+        height, width, _ = shape
 
     xt = torch.linspace(grid_boundaries[0][0], grid_boundaries[0][1], height + 1)[:-1]
     yt = torch.linspace(grid_boundaries[1][0], grid_boundaries[1][1], width + 1)[:-1]
 
     grid_x, grid_y = torch.meshgrid(xt, yt, indexing="ij")
 
-    if len(shape) == 2:
+    if len(shape) <= 3:
         grid_x = grid_x.repeat(1, 1).unsqueeze(channel_dim)
         grid_y = grid_y.repeat(1, 1).unsqueeze(channel_dim)
     else:
@@ -225,6 +258,17 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         trainData_a = trainData_a.permute(0, 3, 4, 1, 2)
         testsData_a = testsData_a.permute(0, 3, 4, 1, 2)
         validData_a = validData_a.permute(0, 3, 4, 1, 2)
+    if ("FNO2d" in params.NN) or ("MNO" in params.NN):
+        trainData_a = trainData_a.reshape(trainSize, S, S, params.T_in)
+        testsData_a = testsData_a.reshape(testsSize, S, S, params.T_in)
+        validData_a = validData_a.reshape(validSize, S, S, params.T_in)
+        trainData_a = trainData_a.permute(0, 3, 1, 2)
+        testsData_a = testsData_a.permute(0, 3, 1, 2)
+        validData_a = validData_a.permute(0, 3, 1, 2)
+        # permute u data
+        trainData_u = trainData_u.permute(0, 3, 1, 2)
+        testsData_u = testsData_u.permute(0, 3, 1, 2)
+        validData_u = validData_u.permute(0, 3, 1, 2)
 
     if params.encoder:
         # normailze input data
@@ -235,6 +279,12 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         # normalize output data
         output_encoder = UnitGaussianNormalizer(trainData_u)
         trainData_u = output_encoder.encode(trainData_u)
+        # testsData_u = output_encoder.encode(testsData_u)
+        # validData_u = output_encoder.encode(validData_u)
+    else:
+        output_encoder = None
+        input_encoder = None
+    # reshape data
 
     # define the grid
     grid_bounds = [[-2.5, 2.5], [-2.5, 2.5]]
@@ -242,26 +292,23 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     trainDataset = TensorDataset(
         trainData_a,
         trainData_u,
-        transform_x=PositionalEmbedding(grid_bounds, 0),
     )
     testsDataset = TensorDataset(
         testsData_a,
         testsData_u,
-        transform_x=PositionalEmbedding(grid_bounds, 0),
     )
     validDataset = TensorDataset(
         validData_a,
         validData_u,
-        transform_x=PositionalEmbedding(grid_bounds, 0),
     )
     # Create the data loader
     trainLoader = torch.utils.data.DataLoader(
         trainDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
     )
     testLoader = torch.utils.data.DataLoader(
-        testsDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
+        testsDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
     )
     validLoader = torch.utils.data.DataLoader(
-        validDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
+        validDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
     )
     return trainLoader, testLoader, validLoader, input_encoder, output_encoder
