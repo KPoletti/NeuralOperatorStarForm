@@ -8,3 +8,16 @@ results/*
 AnalyzeResults.ipynb
 DataVisuals/*
 tests/*
+input_N100.py
+input_N250.py
+input_N1500.py
+input_N4500.py
+input_N50.py
+input_N500.py
+input_N1000.py
+input_N2500.py
+input_N3500.py
+input_N5000.py
+numpoints_job_file
+VaryNumberDataPoints.job
+input_N4000.py

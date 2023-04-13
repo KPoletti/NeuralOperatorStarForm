@@ -11,13 +11,14 @@ import time
 def main(params):
     # grab the ending of the density file with .pt
     densityProfile = params.TRAIN_PATH.split("density")[-1].split(".")[0]
-
+    N = (params.split[0] + params.split[1]) * params.N
     # create output folder
     path = (
         f"SF_{params.NN}_V100_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}"
         f"{densityProfile}"
         f"_E{params.encoder}"
+        f"_N{N}"
     )
     # check if path exists
     if not os.path.exists(f"results/{path}"):
@@ -89,7 +90,7 @@ def main(params):
         validTime,
         output_encoder=output_encoder,
         input_encoder=input_encoder,
-        savename="ValidationData",
+        # savename="ValidationData",
     )
 
     ## print output folder
@@ -105,10 +106,11 @@ if __name__ == "__main__":
     """
     Parse in command line arguments, these are defined in input.txt
     """
-    os.chdir("/workspace/kpoletti/FNO/NeuralOperatorStarForm/")
+    # os.chdir("/work/08770/kp32595/ls6/research/NeuralOperatorStarForm/")
     parser = argparse.ArgumentParser()
+    print(f"Found {torch.cuda.device_count()} GPUs")
     ######### input parameters #########
     parser.add_argument("--input", type=str, default="input", help="input file")
     params = __import__(parser.parse_args().input)
-    # params = imp.load_source("params", parser.parse_args().input)
+    parser.add_argument("--N", type=int, default=params.N, help="Number of Data points")
     main(params)

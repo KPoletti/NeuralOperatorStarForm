@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # grab the ending of the density file with .pt
 densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
+N = (param.split[0] + param.split[1]) * param.N
 
 # create output folder
 path = (
@@ -22,6 +23,7 @@ path = (
     f"_m{param.modes}_w{param.width}_S{param.S}"
     f"{densityProfile}"
     f"_E{param.encoder}"
+    f"_N{N}"
 )
 
 if not os.path.exists(f"results/{path}/logs"):
@@ -55,7 +57,7 @@ def dataSplit(params) -> tuple:
         tmp = params.N
     trainSize = int(tmp * params.split[0])
     testSize = int(tmp * params.split[1])
-    validSize = tmp - trainSize - testSize
+    validSize = int(tmp * params.split[2]) - 1
     return trainSize, testSize, validSize
 
 
@@ -124,7 +126,7 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
     # load data
     trainData = fullData[:trainSize]
     testData = fullData[trainSize : trainSize + testSize]
-    validData = fullData[trainSize + testSize :]
+    validData = fullData[-validSize:]
     del fullData
     return trainData, testData, validData
 
@@ -272,22 +274,24 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
 
     if params.encoder:
         # normailze input data
-        input_encoder = UnitGaussianNormalizer(trainData_a)
+        input_encoder = UnitGaussianNormalizer(trainData_a, verbose=False)
         trainData_a = input_encoder.encode(trainData_a)
         testsData_a = input_encoder.encode(testsData_a)
         validData_a = input_encoder.encode(validData_a)
         # normalize output data
-        output_encoder = UnitGaussianNormalizer(trainData_u)
+        output_encoder = UnitGaussianNormalizer(trainData_u, verbose=False)
         trainData_u = output_encoder.encode(trainData_u)
         # testsData_u = output_encoder.encode(testsData_u)
         # validData_u = output_encoder.encode(validData_u)
     else:
         output_encoder = None
         input_encoder = None
-    # reshape data
 
     # define the grid
     grid_bounds = [[-2.5, 2.5], [-2.5, 2.5]]
+    logger.debug(f"Train Data A Shape: {trainData_a.shape}")
+    logger.debug(f"Train Data U Shape: {trainData_u.shape}")
+
     # Load the data into a tensor dataset
     trainDataset = TensorDataset(
         trainData_a,

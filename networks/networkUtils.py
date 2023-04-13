@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 # grab the ending of the density file with .pt
 densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
-
+N = (param.split[0] + param.split[1]) * param.N
 # create output folder
-path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}_E{param.encoder}"
+path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}_E{param.encoder}_N{N}"
 
 if not os.path.exists(f"results/{path}/logs"):
     os.makedirs(f"results/{path}/logs")
@@ -125,14 +125,10 @@ class Trainer(object):
         diss_loss_l2 = 0
         for batch_idx, sample in enumerate(train_loader):
             data, target = sample["x"].to(self.device), sample["y"].to(self.device)
-            # convet to numpy array
 
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
             output = self.model(data)
-            # # convert the output to the original shape
-            # output = output.view(
-            #     self.params.batch_size, self.params.S, self.params.S, self.params.T
-            # )
+
             # decode  if there is an output encoder
             if output_encoder is not None:
                 # decode the target
@@ -141,19 +137,18 @@ class Trainer(object):
                 output = output_encoder.decode(output)
 
             # compute the loss
-            loss = self.loss(
-                output.view(self.params.batch_size, -1),
-                target.view(self.params.batch_size, -1),
-            )
+            loss = self.loss(output.float(), target)
+
             # add regularizer for MNO
             if self.params.NN == "MNO":
                 diss_loss = self.dissipativeRegularizer(data, self.device)
                 diss_loss_l2 += diss_loss.item()
                 loss += diss_loss
             loss.backward()
+
             self.optimizer.step()
-            self.scheduler.step()
             train_loss += loss.item()
+
         print(f"Disssipative loss: {diss_loss:0.6f}")
         return train_loss, loss
 
@@ -174,27 +169,27 @@ class Trainer(object):
         # initialize the loss function
         self.loss = self.params.loss_fn
 
-        # initialize the regularizer
         # start training
         for epoch in range(self.params.epochs):
             epoch_timer = time.time()
 
+            # set to train mode
             self.model.train()
-            # train_loss, loss = self.batchLoop(train_loader, output_encoder)
+
+            # initialize loss
             train_loss = 0
             loss = 0
             diss_loss = 0
             diss_loss_l2 = 0
+
             for batch_idx, sample in enumerate(train_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
-                # convet to numpy array
+                logger.debug(f"Batch Data Shape: {data.shape}")
 
                 self.optimizer.zero_grad(set_to_none=True)
                 output = self.model(data)
-                # # convert the output to the original shape
-                # output = output.view(
-                #     self.params.batch_size, self.params.S, self.params.S, self.params.T
-                # )
+                logger.debug(f"Output Data Shape: {output.shape}")
+
                 # decode  if there is an output encoder
                 if output_encoder is not None:
                     # decode the target
@@ -203,17 +198,21 @@ class Trainer(object):
                     output = output_encoder.decode(output)
 
                 # compute the loss
-                # loss = self.loss(
-                #     output.view(self.params.batch_size, -1),
-                #     target.view(self.params.batch_size, -1),
-                # )
-                loss = torch.sum(self.loss(output.float(), target))
+                loss = self.loss(output.float(), target)
+                logger.debug(f"Loss Shape: {loss.shape}")
+                logger.debug(f"Loss Type: {type(loss)}")
+                logger.debug(f"Loss Value: {loss}")
+                logger.debug(f"Loss Value: {loss.item()}")
+                if len(loss.shape) > 1:
+                    logger.debug(f"Loss Shape: {loss.shape}")
+                    logger.debug(f"Loss Value: {loss.item()}")
 
                 # add regularizer for MNO
                 if self.params.NN == "MNO":
                     diss_loss = self.dissipativeRegularizer(data, self.device)
                     diss_loss_l2 += diss_loss.item()
                     loss += diss_loss
+                # Backpropagate the loss
                 loss.backward()
 
                 self.optimizer.step()
@@ -232,11 +231,7 @@ class Trainer(object):
                         output = output_encoder.decode(output)
                         # target = output_encoder.decode(target)
                         # do not decode the target because the test data is not encoded
-                    # test_loss += self.loss(
-                    #     output.view(self.params.batch_size, -1),
-                    #     target.view(self.params.batch_size, -1),
-                    # ).item()
-                    test_loss += torch.sum(self.loss(output, target)).item()
+                    test_loss += self.loss(output, target).item()
             test_loss /= len(test_loader.dataset)
             train_loss /= len(train_loader.dataset)
             self.scheduler.step()
@@ -428,6 +423,12 @@ class Trainer(object):
                     rePred[index : index + self.params.batch_size] = reData
                 else:
                     rePred[index : index + self.params.batch_size] = output
+            # normalize test loss
+            test_loss /= len(data_loader.dataset)
+            print(f"Length of Valid Data: {len(data_loader.dataset)}")
+            # print the final loss
+            numTrained = self.params.N * self.params.split[0]
+            print(f"Final Loss for {int(numTrained)}: {test_loss} ")
 
         if len(savename) > 0:
             scipy.io.savemat(
