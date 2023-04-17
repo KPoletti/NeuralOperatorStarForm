@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # grab the ending of the density file with .pt
 densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
-N = (param.split[0] + param.split[1]) * param.N
+N = int((param.split[0] + param.split[1]) * param.N)
 
 # create output folder
 path = (

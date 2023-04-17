@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # grab the ending of the density file with .pt
 densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
-N = (param.split[0] + param.split[1]) * param.N
+N = int((param.split[0] + param.split[1]) * param.N)
 # create output folder
 path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}_E{param.encoder}_N{N}"
 
@@ -408,10 +408,7 @@ class Trainer(object):
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
                     reData = output_encoder.decode(reData)
-                test_loss += self.loss(
-                    output.view(self.params.batch_size, -1),
-                    target.view(self.params.batch_size, -1),
-                ).item()
+                test_loss += self.loss(output, target).item()
                 if input_encoder:
                     data = input_encoder.decode(data)
                 # assign the values

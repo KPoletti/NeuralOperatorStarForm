@@ -6,7 +6,9 @@ from utils.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
+##############################################
 # Data parameters
+##############################################
 DATA_PATH = "../dataToSend/TrainingData/"
 DATA_PATH = "../dataToSend/FullDataTensor/"
 mu = "ALL"
@@ -28,24 +30,26 @@ TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
 TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
 log = True
 N = 874
-
+#
 # DATA_PATH = "../dataToSend/CaltechData/"
 # TRAIN_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.pt"
 # TIME_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.h5"
 # log = False
 # N = 5000
-
+##############################################
 # Neural network parameters
+##############################################
 NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
 # input_channels = 10
 # output_channels = 10
 # modes = 24  # star Form 20
 # width = 64  # star Form 100
+
 input_channels = 1
 output_channels = 1
 modes = 20  # star Form 20
 width = 100  # star Form 100
-encoder = True
+encoder = False
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -58,8 +62,9 @@ if NN == "MNO":
         radius,
         (525 * S) + radius,
     )  # inner and outer radii, in L2 norm of function space
-
+##############################################
 # Training parameters
+##############################################
 epochs = 250
 lr = 0.01
 scheduler_step = 50
@@ -67,12 +72,14 @@ scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
 loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
+
+
 level = "INFO"
 file = "output.log"
 log_interval = 100
 
 # Option to Save NN
-saveNeuralNetwork = False
+saveNeuralNetwork = True
 
 # Option to create plots
 doPlot = True

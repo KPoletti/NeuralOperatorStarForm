@@ -11,7 +11,7 @@ import time
 def main(params):
     # grab the ending of the density file with .pt
     densityProfile = params.TRAIN_PATH.split("density")[-1].split(".")[0]
-    N = (params.split[0] + params.split[1]) * params.N
+    N = int((params.split[0] + params.split[1]) * params.N)
     # create output folder
     path = (
         f"SF_{params.NN}_V100_ep{params.epochs}"
@@ -90,7 +90,7 @@ def main(params):
         validTime,
         output_encoder=output_encoder,
         input_encoder=input_encoder,
-        # savename="ValidationData",
+        savename="ValidationData",
     )
 
     ## print output folder
