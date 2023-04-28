@@ -313,6 +313,6 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         testsDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
     )
     validLoader = torch.utils.data.DataLoader(
-        validDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
+        validDataset, batch_size=1, shuffle=False, drop_last=True
     )
     return trainLoader, testLoader, validLoader, input_encoder, output_encoder

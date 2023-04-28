@@ -11,6 +11,7 @@ import input as param
 import logging
 import scipy
 import time
+import wandb
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,7 @@ class Trainer(object):
                 f"Training Loss: {train_loss:.6f} \t"
                 f"Test Loss: {test_loss:.6f}"
             )
+        # wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
         if self.params.saveNeuralNetwork:
             torch.save(self.model, f"results/{path}/models/{self.params.NN}")
 

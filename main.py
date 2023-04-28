@@ -6,9 +6,15 @@ import networks.networkUtils as myNet
 import argparse
 import logging
 import time
+import wandb
 
 
 def main(params):
+    with open("private/wandb_api_key.txt") as f:
+        wandb_api_key = f.readlines()
+    # wandb.login(key=wandb_api_key)
+
+    # run = wandb.init(project="Wandb-Test-StarForm", config=params)
     # grab the ending of the density file with .pt
     densityProfile = params.TRAIN_PATH.split("density")[-1].split(".")[0]
     N = int((params.split[0] + params.split[1]) * params.N)
