@@ -6,50 +6,82 @@ from utils.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-##############################################
-# Data parameters
-##############################################
-DATA_PATH = "../dataToSend/TrainingData/"
-DATA_PATH = "../dataToSend/FullDataTensor/"
-mu = "ALL"
-dN = 10
-sub = 1
-# Pooling parameters
-poolKernel = 2  # set to 0 to disable pooling
-poolStride = 2  # set to 0 to disable pooling
-
-S = 800
-# calculate the size of the output of the pooling layer from
-# https://pytorch.org/docs/stable/generated/torch.nn.AvgPool2d.html
-if poolKernel > 0:
-    S = math.floor((S - poolKernel) / poolStride + 1)
-T = 1
-T_in = 1
-split = [0.7, 0.2, 0.1]
-TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
-TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
-log = True
-N = 874
-#
+#############################################
+# FOR NS Cal-tech Data
+#############################################
 # DATA_PATH = "../dataToSend/CaltechData/"
 # TRAIN_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.pt"
 # TIME_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.h5"
 # log = False
 # N = 5000
-##############################################
-# Neural network parameters
-##############################################
-NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
 # input_channels = 10
 # output_channels = 10
 # modes = 24  # star Form 20
 # width = 64  # star Form 100
 
+##############################################
+# For MHD Star Formation Data
+##############################################
+# DATA_PATH = "../dataToSend/TrainingData/"
+# DATA_PATH = "../dataToSend/FullDataTensor/"
+# mu = "ALL"
+# dN = 10
+# sub = 1
+# Pooling parameters
+poolKernel = 0  # set to 0 to disable pooling
+poolStride = 0  # set to 0 to disable pooling
+
+# S = 800
+# T = 1
+# T_in = 1
+
+# TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
+# TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
+# log = True
+# N = 874
+
+# input_channels = 1
+# output_channels = 1
+# modes = 20  # star Form 20
+# width = 150  # star Form 100
+
+##############################################
+# For CATS MHD Data
+##############################################
+
+DATA_PATH = "../dataToSend/MHD_CATS/"
+TRAIN_PATH = f"{DATA_PATH}CATS.pt"
+TIME_PATH = f"{DATA_PATH}../CaltechData/ns_V1e-3_N5000_T50.h5"
+
+log = False
+
+S = 256
+T = 1
+T_in = 1
+
 input_channels = 1
 output_channels = 1
-modes = 20  # star Form 20
-width = 100  # star Form 100
-encoder = False
+modes = 24
+width = 64
+N = 2791
+
+
+##############################################
+# Data parameters
+##############################################
+split = [0.7, 0.2, 0.1]
+
+# calculate the size of the output of the pooling layer from
+# https://pytorch.org/docs/stable/generated/torch.nn.AvgPool2d.html
+if poolKernel > 0:
+    S = math.floor((S - poolKernel) / poolStride + 1)
+
+##############################################
+# Neural network parameters
+##############################################
+NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
+
+encoder = True
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -66,7 +98,7 @@ if NN == "MNO":
 # Training parameters
 ##############################################
 epochs = 250
-lr = 0.01
+lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 10
@@ -74,7 +106,7 @@ optimizer = "Adam"
 loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
 
 
-level = "INFO"
+level = "DEBUG"
 file = "output.log"
 log_interval = 100
 
