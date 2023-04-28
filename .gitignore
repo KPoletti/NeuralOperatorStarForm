@@ -22,5 +22,4 @@ numpoints_job_file
 VaryNumberDataPoints.job
 input_N4000.py
 private/wandb_api_key.txt
-wandb/latest-run
-wandb/run-20230417_104214-dkpr5lg5/run-dkpr5lg5.wandb
+wandb/*

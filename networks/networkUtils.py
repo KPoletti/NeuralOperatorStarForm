@@ -250,7 +250,7 @@ class Trainer(object):
                 f"Training Loss: {train_loss:.6f} \t"
                 f"Test Loss: {test_loss:.6f}"
             )
-        # wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
+        wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
         if self.params.saveNeuralNetwork:
             torch.save(self.model, f"results/{path}/models/{self.params.NN}")
 
@@ -340,6 +340,7 @@ class Trainer(object):
         ax.set_ylabel("Normalized  RMSE")
         ax.set_title("RMSE Over Time")
         ax.legend()
+        wandb.log({"RMSE": fig})
         if len(savename) > 0:
             fig.savefig(f"results/{path}/plots/{savename}_RMSE.png")
         plt.close(fig)
@@ -362,6 +363,7 @@ class Trainer(object):
         ax.set_ylabel("RMSE")
         ax.legend()
         ax.set_title("RMSE as a function of density")
+        wandb.log({"RMSE vs Density": fig})
         if len(savename) > 0:
             fig.savefig(f"results/{path}/plots/{savename}_RMSE_vs_density.png")
         plt.close(fig)

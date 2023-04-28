@@ -7,14 +7,59 @@ import argparse
 import logging
 import time
 import wandb
+import json
+
+
+def convertParamsToDict(params):
+    """
+    Converts the params to a dictionary for wandb
+    """
+    paramsDict = {}
+    unneeded = [
+        "__name__",
+        "__doc__",
+        "__package__",
+        "__loader__",
+        "__spec__",
+        "__file__",
+        "__cached__",
+        "__builtins__",
+        "nn",
+        "sample_uniform_spherical_shell",
+        "linear_scale_dissipative_target",
+        "LpLoss",
+        "H1Loss",
+        "math",
+    ]
+    for key, value in vars(params).items():
+        # skip the levels that are not needed
+        if key in unneeded:
+            continue
+        paramsDict[key] = value
+    return paramsDict
+
+
+def convertParamsToJSON(params):
+    """
+    Converts the params to a JSON for wandb
+    """
+    paramsDict = convertParamsToDict(params)
+    paramsJSON = json.dumps(
+        paramsDict, default=lambda o: o.__dict__, sort_keys=True, indent=4
+    )
+    # convert back to dictionary
+    paramsJSON = json.loads(paramsJSON)
+    return paramsJSON
 
 
 def main(params):
     with open("private/wandb_api_key.txt") as f:
-        wandb_api_key = f.readlines()
-    # wandb.login(key=wandb_api_key)
+        wandb_api_key = f.readlines()[0]
+    wandb.login(key=wandb_api_key)
+    # convert params to dictionary
+    paramsJSON = convertParamsToJSON(params)
 
-    # run = wandb.init(project="Wandb-Test-StarForm", config=params)
+    run = wandb.init(project="Wandb-Test-StarForm", config=paramsJSON)
     # grab the ending of the density file with .pt
     densityProfile = params.TRAIN_PATH.split("density")[-1].split(".")[0]
     N = int((params.split[0] + params.split[1]) * params.N)
@@ -33,6 +78,7 @@ def main(params):
         os.makedirs(f"results/{path}/models")
         os.makedirs(f"results/{path}/plots")
         os.makedirs(f"results/{path}/data")
+
     # SET UP LOGGING
     logger = logging.getLogger(__name__)
     logger.setLevel(params.level)
@@ -42,7 +88,6 @@ def main(params):
     )
     fileHandler.setFormatter(formatter)
     logger.addHandler(fileHandler)
-
     logger.info(f"Output folder for {path}")
 
     ################################################################
@@ -61,6 +106,7 @@ def main(params):
     logger.info(f"Data loaded in {time.time() - dataTime} seconds")
     # initialize device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     ################################################################
     # create neural network
     ################################################################
@@ -75,6 +121,7 @@ def main(params):
         input_encoder.cuda()
     # log the model to debug
     logger.info(f"Neural network created in {time.time() - netTime} seconds")
+
     ################################################################
     # train neural network
     ################################################################
@@ -98,8 +145,6 @@ def main(params):
         input_encoder=input_encoder,
         savename="ValidationData",
     )
-
-    ## print output folder
     print(f"Output folder for {path}")
 
 
@@ -112,7 +157,8 @@ if __name__ == "__main__":
     """
     Parse in command line arguments, these are defined in input.txt
     """
-    # os.chdir("/work/08770/kp32595/ls6/research/NeuralOperatorStarForm/")
+    # change the directory to main.py's directory
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     parser = argparse.ArgumentParser()
     print(f"Found {torch.cuda.device_count()} GPUs")
     ######### input parameters #########
