@@ -4,6 +4,7 @@ import sys
 import torch
 from dataclasses import dataclass
 import pandas as pd
+import wandb
 
 # from neuralop.data.transforms import PositionalEmbedding
 from neuralop.utils import UnitGaussianNormalizer
@@ -19,9 +20,8 @@ N = int((param.split[0] + param.split[1]) * param.N)
 
 # create output folder
 path = (
-    f"SF_{param.NN}_V100_ep{param.epochs}"
+    f"SF_{param.NN}_{param.data_name}_ep{param.epochs}"
     f"_m{param.modes}_w{param.width}_S{param.S}"
-    f"{densityProfile}"
     f"_E{param.encoder}"
     f"_N{N}"
 )
@@ -115,6 +115,8 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
         fullData = torch.load(filename)
         if params.log:
             fullData = torch.log10(fullData).float()
+        else:
+            fullData = fullData.float()
         if params.poolKernel > 0:
             fullData = averagePooling(fullData, params)
     else:
@@ -229,6 +231,11 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     logger.debug(f"Train size: {trainSize}")
     logger.debug(f"Test size: {testsSize}")
     logger.debug(f"Valid size: {validSize}")
+    wandb.config["Train data"] = trainSize
+    wandb.config["Test data"] = testsSize
+    wandb.config["Valid data"] = validSize
+    wandb.config["Total data"] = trainSize + testsSize + validSize
+
     # load data
     trainData, testsData, validData = loadData(params, isDensity=True)
     trainTime, testsTime, validTime = loadData(params, isDensity=False)

@@ -19,7 +19,12 @@ logger = logging.getLogger(__name__)
 densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
 N = int((param.split[0] + param.split[1]) * param.N)
 # create output folder
-path = f"SF_{param.NN}_V100_ep{param.epochs}_m{param.modes}_w{param.width}_S{param.S}{densityProfile}_E{param.encoder}_N{N}"
+path = (
+    f"SF_{param.NN}_{param.data_name}_ep{param.epochs}"
+    f"_m{param.modes}_w{param.width}_S{param.S}"
+    f"_E{param.encoder}"
+    f"_N{N}"
+)
 
 if not os.path.exists(f"results/{path}/logs"):
     os.makedirs(f"results/{path}/logs")
@@ -231,7 +236,7 @@ class Trainer(object):
                     if output_encoder is not None:
                         output = output_encoder.decode(output)
                         # target = output_encoder.decode(target)
-                        # do not decode the target because the test data is not encoded
+                        # do not decode the test target because the test data is not encoded
                     test_loss += self.loss(output, target).item()
             test_loss /= len(test_loader.dataset)
             train_loss /= len(train_loader.dataset)
@@ -250,7 +255,7 @@ class Trainer(object):
                 f"Training Loss: {train_loss:.6f} \t"
                 f"Test Loss: {test_loss:.6f}"
             )
-        wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
+            wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
         if self.params.saveNeuralNetwork:
             torch.save(self.model, f"results/{path}/models/{self.params.NN}")
 
@@ -332,6 +337,7 @@ class Trainer(object):
             time = timeData["t"]["time"].values
         except:
             time = np.arange(0, prediction.shape[0])
+            logger.info("Failed true time data")
         # plot RMSE for each time step
         fig, ax = plt.subplots(1, 1, figsize=(10, 10))
         ax.plot(time, rmse, label="Neural RMSE")
@@ -340,7 +346,8 @@ class Trainer(object):
         ax.set_ylabel("Normalized  RMSE")
         ax.set_title("RMSE Over Time")
         ax.legend()
-        wandb.log({"RMSE": fig})
+        im = wandb.Image(fig)
+        wandb.log({"RMSE": im})
         if len(savename) > 0:
             fig.savefig(f"results/{path}/plots/{savename}_RMSE.png")
         plt.close(fig)
@@ -363,7 +370,8 @@ class Trainer(object):
         ax.set_ylabel("RMSE")
         ax.legend()
         ax.set_title("RMSE as a function of density")
-        wandb.log({"RMSE vs Density": fig})
+        im = wandb.Image(fig)
+        wandb.log({"RMSE vs Density": im})
         if len(savename) > 0:
             fig.savefig(f"results/{path}/plots/{savename}_RMSE_vs_density.png")
         plt.close(fig)
@@ -386,12 +394,13 @@ class Trainer(object):
         # TODO: TEST THIS FUNCTION
         self.model.eval()
         # create a tensor to store the prediction
-        num_samples = len(data_loader) * self.params.batch_size
+        num_samples = len(data_loader.dataset)
         pred = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
         rePred = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
         input = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
         truth = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
         test_loss = 0
+        re_loss = 0
 
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
@@ -412,26 +421,33 @@ class Trainer(object):
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
                     reData = output_encoder.decode(reData)
+                re_loss += self.loss(reData, target).item()
                 test_loss += self.loss(output, target).item()
                 if input_encoder:
                     data = input_encoder.decode(data)
                 # assign the values
-                index = batchidx * self.params.batch_size
-                pred[index : index + self.params.batch_size] = output
-                input[index : index + self.params.batch_size] = data
-                truth[index : index + self.params.batch_size] = target
+                # index = batchidx * self.params.batch_size
+                # pred[index : index + self.params.batch_size] = output
+                # input[index : index + self.params.batch_size] = data
+                # truth[index : index + self.params.batch_size] = target
+                pred[batchidx : batchidx + 1] = output
+                input[batchidx : batchidx + 1] = data
+                truth[batchidx : batchidx + 1] = target
                 if batchidx > 0:
-                    rePred[index : index + self.params.batch_size] = reData
+                    rePred[batchidx : batchidx + 1] = reData
                 else:
-                    rePred[index : index + self.params.batch_size] = output
+                    rePred[batchidx : batchidx + 1] = output
             # normalize test loss
             test_loss /= len(data_loader.dataset)
+            re_loss /= len(data_loader.dataset)
             print(f"Length of Valid Data: {len(data_loader.dataset)}")
             # print the final loss
             numTrained = self.params.N * self.params.split[0]
             print(f"Final Loss for {int(numTrained)}: {test_loss} ")
-
+            wandb.log({"Valid Loss": test_loss, "Reapply Loss": re_loss})
+        print(f"Saving data as {os.getcwd()} results/{path}/data/{savename}.mat")
         if len(savename) > 0:
+            print(f"Saving data as {os.getcwd()} results/{path}/data/{savename}.mat")
             scipy.io.savemat(
                 f"results/{path}/data/{savename}.mat",
                 mdict={

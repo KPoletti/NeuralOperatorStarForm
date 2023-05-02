@@ -59,15 +59,14 @@ def main(params):
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
 
-    run = wandb.init(project="Wandb-Test-StarForm", config=paramsJSON)
+    run = wandb.init(project=params.data_name, config=paramsJSON)
     # grab the ending of the density file with .pt
     densityProfile = params.TRAIN_PATH.split("density")[-1].split(".")[0]
     N = int((params.split[0] + params.split[1]) * params.N)
     # create output folder
     path = (
-        f"SF_{params.NN}_V100_ep{params.epochs}"
+        f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}"
-        f"{densityProfile}"
         f"_E{params.encoder}"
         f"_N{N}"
     )
@@ -114,7 +113,9 @@ def main(params):
     netTime = time.time()
     # create neural network
     model = myNet.initializeNetwork(params)
+    params.batch_size = torch.cuda.device_count() * params.batch_size
     # move to GPU
+    # model = torch.nn.DataParallel(model)
     model = model.to(device)
     if params.encoder:
         output_encoder.cuda()

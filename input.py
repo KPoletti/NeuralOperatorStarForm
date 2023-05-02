@@ -6,64 +6,100 @@ from utils.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
+data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
+
+
+# Pooling parameters
+poolKernel = 0  # set to 0 to disable pooling
+poolStride = 0  # set to 0 to disable pooling
 #############################################
 # FOR NS Cal-tech Data
 #############################################
-# DATA_PATH = "../dataToSend/CaltechData/"
-# TRAIN_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.pt"
-# TIME_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.h5"
-# log = False
-# N = 5000
-# input_channels = 10
-# output_channels = 10
-# modes = 24  # star Form 20
-# width = 64  # star Form 100
+if data_name == "NS-Caltech":
+    DATA_PATH = "../dataToSend/CaltechData/"
+    TRAIN_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.pt"
+    TIME_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.h5"
+    log = False
+    S = 64
+    N = 5000
+    input_channels = 10
+    output_channels = 10
+    modes = 24  # star Form 20
+    width = 64  # star Form 100
+    T = 10
+    T_in = 10
+
+##############################################
+# For Grav Collapse
+##############################################
+elif data_name == "GravColl":
+    S = 800
+    T = 1
+    T_in = 1
+    DATA_PATH = "../dataToSend/TrainingData/"
+    dN = 1
+    mass = "_M1"
+    dt = 0.02
+    sub = 1
+
+    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}.pt"
+    TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}.h5"
+    log = True
+    N = 150
+    data_name = f"{data_name}{mass}_dN{dN}"
+    input_channels = 1
+    output_channels = 1
+    modes = 24  # star Form 20
+    width = 100  # star Form 100
+    poolKernel = 2  # set to 0 to disable pooling
+    poolStride = 2  # set to 0 to disable pooling
 
 ##############################################
 # For MHD Star Formation Data
 ##############################################
-# DATA_PATH = "../dataToSend/TrainingData/"
-# DATA_PATH = "../dataToSend/FullDataTensor/"
-# mu = "ALL"
-# dN = 10
-# sub = 1
-# Pooling parameters
-poolKernel = 0  # set to 0 to disable pooling
-poolStride = 0  # set to 0 to disable pooling
 
-# S = 800
-# T = 1
-# T_in = 1
 
-# TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
-# TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
-# log = True
-# N = 874
+elif data_name == "StarForm":
+    S = 800
+    T = 1
+    T_in = 1
+    DATA_PATH = "../dataToSend/TrainingData/"
+    DATA_PATH = "../dataToSend/FullDataTensor/"
+    mu = "ALL"
+    dN = 10
+    sub = 1
 
-# input_channels = 1
-# output_channels = 1
-# modes = 20  # star Form 20
-# width = 150  # star Form 100
+    TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
+    TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
+    log = True
+    N = 874
+    data_name = f"{data_name}_mu{mu}"
+    input_channels = 1
+    output_channels = 1
+    modes = 20  # star Form 20
+    width = 150  # star Form 100
+    poolKernel = 0  # set to 0 to disable pooling
+    poolStride = 0  # set to 0 to disable pooling
 
 ##############################################
 # For CATS MHD Data
 ##############################################
+elif data_name == "CATS":
+    DATA_PATH = "../dataToSend/MHD_CATS/"
+    TRAIN_PATH = f"{DATA_PATH}CATS.pt"
+    TIME_PATH = f"{DATA_PATH}../CaltechData/ns_V1e-3_N5000_T50.h5"
 
-DATA_PATH = "../dataToSend/MHD_CATS/"
-TRAIN_PATH = f"{DATA_PATH}CATS.pt"
-TIME_PATH = f"{DATA_PATH}../CaltechData/ns_V1e-3_N5000_T50.h5"
+    log = False
 
-log = False
+    S = 256
+    T = 1
+    T_in = 1
 
-S = 256
-T = 1
-T_in = 1
-
-input_channels = 1
-output_channels = 1
-modes = 24
-width = 64
-N = 2791
+    input_channels = 1
+    output_channels = 1
+    modes = 24
+    width = 64
+    N = 2791
 
 
 ##############################################
@@ -97,13 +133,17 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 250
+epochs = 100
 lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
-loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
+loss_name = "LpLoss"
+if loss_name == "LpLoss":
+    loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
+elif loss_name == "H1Loss":
+    loss_fn = H1Loss(d=1, reduce_dims=(0, 1))
 
 
 level = "DEBUG"
