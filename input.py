@@ -6,7 +6,7 @@ from utils.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "NS-Caltech"  # NS-Caltech, StarForm, GravColl or CATS
+data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
@@ -133,7 +133,7 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 50
+epochs = 100
 lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5

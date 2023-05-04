@@ -12,6 +12,7 @@ import logging
 import time
 import wandb
 import json
+import yaml
 
 
 def convertParamsToDict(params):
@@ -62,13 +63,13 @@ def set_Loss(params):
     if params.loss_name == "LpLoss":
         return LpLoss(d=2, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
-        return H1Loss(d=1, reduce_dims=(0, 1))
+        return H1Loss(d=2, reduce_dims=(0, 1))
     else:
         raise ValueError(f"Loss {params.loss_name} not implemented")
 
 
 def main(config=None):
-    params = __import__(parser.parse_args().input)
+    import input as params
 
     with wandb.init(project=f"{params.data_name}_sweep", config=config):
         config = wandb.config
@@ -175,12 +176,12 @@ if __name__ == "__main__":
     """
     # change the directory to main.py's directory
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    parser = argparse.ArgumentParser()
+    # parser = argparse.ArgumentParser()
     print(f"Found {torch.cuda.device_count()} GPUs")
     ######### input parameters #########
-    parser.add_argument("--input", type=str, default="input", help="input file")
-    params = __import__(parser.parse_args().input)
-    parser.add_argument("--N", type=int, default=params.N, help="Number of Data points")
+    # parser.add_argument("--input", type=str, default="input", help="input file")
+    # parser.add_argument("--N", type=int, default=params.N, help="Number of Data points")
+    import input as params
 
     with open("private/wandb_api_key.txt") as f:
         wandb_api_key = f.readlines()[0]
@@ -204,7 +205,7 @@ if __name__ == "__main__":
         "encoder": {"values": [True, False]},
         "lr": {"distribution": "log_uniform_values", "min": 1e-5, "max": 1e-2},
         "scheduler_step": {"values": [10, 25, 50, 75]},
-        # "loss_name": {"values": ["LpLoss", "H1Loss"]},
+        "loss_name": {"values": ["LpLoss", "H1Loss"]},
     }
     # create a list of the sweep parameters
     sweep_params_list = list(sweep_params.keys())
@@ -214,10 +215,14 @@ if __name__ == "__main__":
             sweep_params[key] = {"value": value}
     # add sweep parameters to sweep_config
     sweep_config["parameters"] = sweep_params
+    # Save the sweep config to a yaml file
+    # with open(f"sweep_config_{params.data_name}.yaml", "w") as f:
+    #     yaml.dump(sweep_config, f)
 
     # create the sweep_id
-    sweep_id = wandb.sweep(sweep_config, project=f"{params.data_name}_sweep")
+    # sweep_id = wandb.sweep(sweep_config, project=f"{params.data_name}_sweep")
     # run the sweep agent
-    wandb.agent(sweep_id, function=main, count=10)
-
-    # main()
+    # wandb.agent(sweep_id, function=main, count=10)
+    with open("./sweep_config.yaml") as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+    main(config=config)
