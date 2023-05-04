@@ -6,7 +6,7 @@ from utils.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
+data_name = "NS-Caltech"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
@@ -133,17 +133,17 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 100
+epochs = 50
 lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
-loss_name = "LpLoss"
+loss_name = "H1Loss"
 if loss_name == "LpLoss":
     loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
 elif loss_name == "H1Loss":
-    loss_fn = H1Loss(d=1, reduce_dims=(0, 1))
+    loss_fn = H1Loss(d=2, reduce_dims=(0, 1))
 
 
 level = "DEBUG"
@@ -151,7 +151,7 @@ file = "output.log"
 log_interval = 100
 
 # Option to Save NN
-saveNeuralNetwork = True
+saveNeuralNetwork = False
 
 # Option to create plots
-doPlot = True
+doPlot = False

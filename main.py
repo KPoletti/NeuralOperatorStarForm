@@ -61,7 +61,6 @@ def main(params):
 
     run = wandb.init(project=params.data_name, config=paramsJSON)
     # grab the ending of the density file with .pt
-    densityProfile = params.TRAIN_PATH.split("density")[-1].split(".")[0]
     N = int((params.split[0] + params.split[1]) * params.N)
     # create output folder
     path = (
