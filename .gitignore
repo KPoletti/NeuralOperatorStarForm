@@ -23,3 +23,6 @@ VaryNumberDataPoints.job
 input_N4000.py
 private/wandb_api_key.txt
 wandb/*
+*.yaml
+Sweep.job
+sweep_job_file

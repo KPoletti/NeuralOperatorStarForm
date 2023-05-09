@@ -32,7 +32,7 @@ if not os.path.exists(f"results/{path}/logs"):
     os.makedirs(f"results/{path}/plots")
     os.makedirs(f"results/{path}/data")
 logger.setLevel(param.level)
-fileHandler = logging.FileHandler(f"results/{path}/logs/network.log", mode="w")
+fileHandler = logging.FileHandler(f"results/{path}/logs/output.log", mode="w")
 formatter = logging.Formatter(
     "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
 )
@@ -163,6 +163,7 @@ class Trainer(object):
         train_loader: torch.utils.data.DataLoader,
         test_loader: torch.utils.data.DataLoader,
         output_encoder=None,
+        sweep: bool = False,
     ) -> None:
         """
         Train the model
@@ -174,7 +175,11 @@ class Trainer(object):
         """
         # initialize the loss function
         self.loss = self.params.loss_fn
-
+        # define a test loss function that will be the same regardless of training
+        if sweep:
+            test_loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
+        else:
+            test_loss_fn = self.loss
         # start training
         for epoch in range(self.params.epochs):
             epoch_timer = time.time()
@@ -237,7 +242,8 @@ class Trainer(object):
                         output = output_encoder.decode(output)
                         # target = output_encoder.decode(target)
                         # do not decode the test target because the test data is not encoded
-                    test_loss += self.loss(output, target).item()
+
+                    test_loss += test_loss_fn(output, target).item()
             test_loss /= len(test_loader.dataset)
             train_loss /= len(train_loader.dataset)
             self.scheduler.step()

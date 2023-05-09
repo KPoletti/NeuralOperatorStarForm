@@ -150,7 +150,7 @@ def main(config=None):
             params=params,
             device=device,
         )
-        Trainer.train(trainLoader, testLoader, output_encoder)
+        Trainer.train(trainLoader, testLoader, output_encoder, sweep=True)
         ################################################################
         # test neural network
         ################################################################
@@ -195,17 +195,18 @@ if __name__ == "__main__":
     }
     # create the sweep parameters
     sweep_params = {
-        "modes": {"distribution": "int_uniform", "min": 1, "max": 48},
+        "modes": {"distribution": "int_uniform", "min": 4, "max": 48},
         "width": {
             "distribution": "q_log_uniform_values",
-            "q": 8,
-            "min": 32,
-            "max": 256,
+            "q": 4,
+            "min": 12,
+            "max": 168,
         },
         "encoder": {"values": [True, False]},
-        "lr": {"distribution": "log_uniform_values", "min": 1e-5, "max": 1e-2},
-        "scheduler_step": {"values": [10, 25, 50, 75]},
+        "lr": {"distribution": "log_uniform_values", "min": 1e-8, "max": 1e-1},
+        "scheduler_step": {"values": [5, 10, 25, 35, 50, 60, 75, 100]},
         "loss_name": {"values": ["LpLoss", "H1Loss"]},
+        "batch_size": {"values": [5, 10, 15, 25]},
     }
     # create a list of the sweep parameters
     sweep_params_list = list(sweep_params.keys())
@@ -223,6 +224,6 @@ if __name__ == "__main__":
     # sweep_id = wandb.sweep(sweep_config, project=f"{params.data_name}_sweep")
     # run the sweep agent
     # wandb.agent(sweep_id, function=main, count=10)
-    with open("./sweep_config.yaml") as file:
+    with open(f"./sweep_config_{params.data_name}.yaml") as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     main(config=config)

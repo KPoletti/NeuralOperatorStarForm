@@ -32,7 +32,7 @@ if not os.path.exists(f"results/{path}/logs"):
     os.makedirs(f"results/{path}/plots")
     os.makedirs(f"results/{path}/data")
 logger.setLevel(param.level)
-fileHandler = logging.FileHandler(f"results/{path}/logs/util.log", mode="w")
+fileHandler = logging.FileHandler(f"results/{path}/logs/output.log", mode="w")
 formatter = logging.Formatter(
     "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
 )
@@ -51,7 +51,7 @@ def dataSplit(params) -> tuple:
         testSize: int length of the testing data
         validSize: int length of the validation data
     """
-    if params.log:
+    if "mu" in params.data_name:
         tmp = pd.read_hdf(params.TIME_PATH, "table").shape[0]
     else:
         tmp = params.N
@@ -129,6 +129,8 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
     trainData = fullData[:trainSize]
     testData = fullData[trainSize : trainSize + testSize]
     validData = fullData[-validSize:]
+    if params.level == "DEBUG":
+        print(f"Full Data Shape: {fullData.shape}")
     del fullData
     return trainData, testData, validData
 
@@ -252,6 +254,10 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     validData_a, validData_u, validTime_a, validTime_u = timestepSplit(
         validData, validTime, params
     )
+    if params.level == "DEBUG":
+        print(f"Train Data Shape: {trainData_a.shape}")
+        print(f"Test Data Shape: {testsData_a.shape}")
+        print(f"Valid Data Shape: {validData_a.shape}")
 
     # check if nn contains FNO
     if "FNO3d" in params.NN:
@@ -316,9 +322,14 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     trainLoader = torch.utils.data.DataLoader(
         trainDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
     )
-    testLoader = torch.utils.data.DataLoader(
-        testsDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
-    )
+    if trainSize >= params.batch_size:
+        testLoader = torch.utils.data.DataLoader(
+            testsDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
+        )
+    else:
+        testLoader = torch.utils.data.DataLoader(
+            testsDataset, batch_size=1, shuffle=False, drop_last=True
+        )
     validLoader = torch.utils.data.DataLoader(
         validDataset, batch_size=1, shuffle=False, drop_last=True
     )

@@ -6,12 +6,12 @@ from utils.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
+data_name = "CATS"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
-poolKernel = 0  # set to 0 to disable pooling
-poolStride = 0  # set to 0 to disable pooling
+poolKernel = 4  # set to 0 to disable pooling
+poolStride = 4  # set to 0 to disable pooling
 #############################################
 # FOR NS Cal-tech Data
 #############################################
@@ -38,8 +38,8 @@ elif data_name == "GravColl":
     T_in = 1
     DATA_PATH = "../dataToSend/TrainingData/"
     dN = 1
-    mass = "_M1"
-    dt = 0.02
+    mass = "_M1.2"
+    dt = 0.019
     sub = 1
 
     TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}.pt"
@@ -86,10 +86,10 @@ elif data_name == "StarForm":
 ##############################################
 elif data_name == "CATS":
     DATA_PATH = "../dataToSend/MHD_CATS/"
-    TRAIN_PATH = f"{DATA_PATH}CATS.pt"
+    TRAIN_PATH = f"{DATA_PATH}CATS_full.pt"
     TIME_PATH = f"{DATA_PATH}../CaltechData/ns_V1e-3_N5000_T50.h5"
 
-    log = False
+    log = True
 
     S = 256
     T = 1
@@ -97,9 +97,9 @@ elif data_name == "CATS":
 
     input_channels = 1
     output_channels = 1
-    modes = 24
-    width = 64
-    N = 2791
+    modes = 48
+    width = 128
+    N = 2970
 
 
 ##############################################
@@ -133,13 +133,13 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 100
-lr = 0.0001
-scheduler_step = 50
+epochs = 500
+lr = 0.00001
+scheduler_step = 75
 scheduler_gamma = 0.5
-batch_size = 10
+batch_size = 20
 optimizer = "Adam"
-loss_name = "H1Loss"
+loss_name = "LpLoss"
 if loss_name == "LpLoss":
     loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
 elif loss_name == "H1Loss":
@@ -151,7 +151,7 @@ file = "output.log"
 log_interval = 100
 
 # Option to Save NN
-saveNeuralNetwork = False
+saveNeuralNetwork = True
 
 # Option to create plots
-doPlot = False
+doPlot = True
