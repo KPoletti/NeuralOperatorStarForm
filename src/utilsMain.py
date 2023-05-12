@@ -1,43 +1,14 @@
-import argparse
-import os
-import sys
 import torch
 from dataclasses import dataclass
 import pandas as pd
 import wandb
-
-# from neuralop.data.transforms import PositionalEmbedding
 from neuralop.utils import UnitGaussianNormalizer
 from neuralop.datasets.tensor_dataset import TensorDataset
-import input as param
 import logging
 
+# initialize logger
 logger = logging.getLogger(__name__)
-
-# grab the ending of the density file with .pt
-densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
-N = int((param.split[0] + param.split[1]) * param.N)
-
-# create output folder
-path = (
-    f"SF_{param.NN}_{param.data_name}_ep{param.epochs}"
-    f"_m{param.modes}_w{param.width}_S{param.S}"
-    f"_E{param.encoder}"
-    f"_N{N}"
-)
-
-if not os.path.exists(f"results/{path}/logs"):
-    os.makedirs(f"results/{path}/logs")
-    os.makedirs(f"results/{path}/models")
-    os.makedirs(f"results/{path}/plots")
-    os.makedirs(f"results/{path}/data")
-logger.setLevel(param.level)
-fileHandler = logging.FileHandler(f"results/{path}/logs/output.log", mode="w")
-formatter = logging.Formatter(
-    "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
-)
-fileHandler.setFormatter(formatter)
-logger.addHandler(fileHandler)
+logging.getLogger("wandb").setLevel(logging.WARNING)
 
 
 def dataSplit(params) -> tuple:
@@ -119,6 +90,7 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
             fullData = fullData.float()
         if params.poolKernel > 0:
             fullData = averagePooling(fullData, params)
+        logger.debug(f"Full Data Shape: {fullData.shape}")
     else:
         filename = params.TIME_PATH
         # load in data about each time step
@@ -129,8 +101,6 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
     trainData = fullData[:trainSize]
     testData = fullData[trainSize : trainSize + testSize]
     validData = fullData[-validSize:]
-    if params.level == "DEBUG":
-        print(f"Full Data Shape: {fullData.shape}")
     del fullData
     return trainData, testData, validData
 
@@ -156,57 +126,6 @@ def timestepSplit(
     dataInfo_a = dataInfo["t"]
     dataInfo_u = dataInfo["t+1"]
     return dataSet_a, dataSet_u, dataInfo_a, dataInfo_u
-
-
-class PositionalEmbedding:
-    """Positional embedding for 2D data, from neuraloperator github"""
-
-    def __init__(self, grid_boundaries, channel_dim):
-        self.grid_boundaries = grid_boundaries
-        self.channel_dim = channel_dim
-        self._grid = None
-
-    def grid(self, data):
-        if self._grid is None:
-            self._grid = addGrid(
-                data, grid_boundaries=self.grid_boundaries, channel_dim=self.channel_dim
-            )
-        return self._grid
-
-    def __call__(self, data):
-        x, y = self.grid(data)
-
-        return torch.cat((data, x, y), dim=-1)
-
-
-def addGrid(
-    input_tensor, grid_boundaries: list = [[-2.5, 2.5], [-2.5, 2.5]], channel_dim=0
-):
-    """
-    Appends grid positional encoding to an input tensor, concatenating as additional
-    dimensions along the channels
-    This is a modified version of the function in neuralop.data.transforms to allow work
-    with 4D tensors
-    """
-    shape = list(input_tensor.shape)
-    if len(shape) == 2:
-        height, width = shape
-    else:
-        height, width, _ = shape
-
-    xt = torch.linspace(grid_boundaries[0][0], grid_boundaries[0][1], height + 1)[:-1]
-    yt = torch.linspace(grid_boundaries[1][0], grid_boundaries[1][1], width + 1)[:-1]
-
-    grid_x, grid_y = torch.meshgrid(xt, yt, indexing="ij")
-
-    if len(shape) <= 3:
-        grid_x = grid_x.repeat(1, 1).unsqueeze(channel_dim)
-        grid_y = grid_y.repeat(1, 1).unsqueeze(channel_dim)
-    else:
-        grid_x = grid_x.repeat(1, 1).unsqueeze(0).unsqueeze(channel_dim)
-        grid_y = grid_y.repeat(1, 1).unsqueeze(0).unsqueeze(channel_dim)
-
-    return grid_x, grid_y
 
 
 def prepareDataForTraining(params: dataclass, S: int) -> tuple:
@@ -273,6 +192,19 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         trainData_a = trainData_a.permute(0, 3, 4, 1, 2)
         testsData_a = testsData_a.permute(0, 3, 4, 1, 2)
         validData_a = validData_a.permute(0, 3, 4, 1, 2)
+        # permute u data
+        trainData_u = trainData_u.reshape(trainSize, S, S, 1, params.T_in).repeat(
+            [1, 1, 1, params.T, 1]
+        )
+        testsData_u = testsData_u.reshape(testsSize, S, S, 1, params.T_in).repeat(
+            [1, 1, 1, params.T, 1]
+        )
+        validData_u = validData_u.reshape(validSize, S, S, 1, params.T_in).repeat(
+            [1, 1, 1, params.T, 1]
+        )
+        trainData_u = trainData_u.permute(0, 3, 4, 1, 2)
+        testsData_u = testsData_u.permute(0, 3, 4, 1, 2)
+        validData_u = validData_u.permute(0, 3, 4, 1, 2)
     if ("FNO2d" in params.NN) or ("MNO" in params.NN):
         trainData_a = trainData_a.reshape(trainSize, S, S, params.T_in)
         testsData_a = testsData_a.reshape(testsSize, S, S, params.T_in)
@@ -304,6 +236,18 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     grid_bounds = [[-2.5, 2.5], [-2.5, 2.5]]
     logger.debug(f"Train Data A Shape: {trainData_a.shape}")
     logger.debug(f"Train Data U Shape: {trainData_u.shape}")
+    logger.debug(f"Test Data A Shape: {testsData_a.shape}")
+    logger.debug(f"Test Data U Shape: {testsData_u.shape}")
+    logger.debug(f"Valid Data A Shape: {validData_a.shape}")
+    logger.debug(f"Valid Data U Shape: {validData_u.shape}")
+
+    # Assert that the data is the correct shape
+    try:
+        assert trainData_a.shape == trainData_u.shape
+        assert testsData_a.shape == testsData_u.shape
+        assert validData_a.shape == validData_u.shape
+    except AssertionError:
+        logger.warning("Data shapes do not match. Manually fixing.")
 
     # Load the data into a tensor dataset
     trainDataset = TensorDataset(

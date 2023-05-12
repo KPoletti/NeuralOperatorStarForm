@@ -1,5 +1,5 @@
 import torch.nn as nn
-from utils.dissipative_utils import (
+from src.dissipative_utils import (
     sample_uniform_spherical_shell,
     linear_scale_dissipative_target,
 )
@@ -10,8 +10,8 @@ data_name = "CATS"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
-poolKernel = 0  # set to 0 to disable pooling
-poolStride = 0  # set to 0 to disable pooling
+poolKernel = 4  # set to 0 to disable pooling
+poolStride = 4  # set to 0 to disable pooling
 #############################################
 # FOR NS Cal-tech Data
 #############################################
@@ -24,10 +24,12 @@ if data_name == "NS-Caltech":
     N = 5000
     input_channels = 10
     output_channels = 10
-    modes = 24  # star Form 20
-    width = 64  # star Form 100
+    modes = 12  # star Form 20
+    width = 24  # star Form 100
     T = 10
     T_in = 10
+    poolKernel = 2  # set to 0 to disable pooling
+    poolStride = 2  # set to 0 to disable pooling
 
 ##############################################
 # For Grav Collapse
@@ -38,8 +40,12 @@ elif data_name == "GravColl":
     T_in = 1
     DATA_PATH = "../dataToSend/TrainingData/"
     dN = 1
+    # two options for mass: "_M1.2" or "_M1"
     mass = "_M1.2"
-    dt = 0.019
+    if mass == "_M1.2":
+        dt = 0.019
+    elif mass == "_M1":
+        dt = 0.02
     sub = 1
 
     TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}.pt"
@@ -49,10 +55,10 @@ elif data_name == "GravColl":
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 1
     output_channels = 1
-    modes = 24  # star Form 20
-    width = 100  # star Form 100
-    poolKernel = 2  # set to 0 to disable pooling
-    poolStride = 2  # set to 0 to disable pooling
+    modes = 12  # star Form 20
+    width = 24  # star Form 100
+    poolKernel = 4  # set to 0 to disable pooling
+    poolStride = 4  # set to 0 to disable pooling
 
 ##############################################
 # For MHD Star Formation Data
@@ -86,7 +92,7 @@ elif data_name == "StarForm":
 ##############################################
 elif data_name == "CATS":
     DATA_PATH = "../dataToSend/MHD_CATS/"
-    TRAIN_PATH = f"{DATA_PATH}CATS_test.pt"
+    TRAIN_PATH = f"{DATA_PATH}CATS_full.pt"
     TIME_PATH = f"{DATA_PATH}../CaltechData/ns_V1e-3_N5000_T50.h5"
 
     log = True
@@ -97,8 +103,8 @@ elif data_name == "CATS":
 
     input_channels = 1
     output_channels = 1
-    modes = 48
-    width = 24
+    modes = 12
+    width = 48
     N = 2970
 
 
@@ -115,7 +121,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
+NN = "FNO3d"  # "FNO2d", "MNO", "FNO"
 
 encoder = False
 if NN == "MNO":
@@ -133,17 +139,21 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 500
+epochs = 2
 lr = 0.00005
 scheduler_step = 75
 scheduler_gamma = 0.5
 batch_size = 20
 optimizer = "Adam"
 loss_name = "LpLoss"
+if NN == "FNO3d":
+    d = 3
+else:
+    d = 2
 if loss_name == "LpLoss":
-    loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
+    loss_fn = LpLoss(d=d, p=2, reduce_dims=(0, 1))
 elif loss_name == "H1Loss":
-    loss_fn = H1Loss(d=2, reduce_dims=(0, 1))
+    loss_fn = H1Loss(d=d, reduce_dims=(0, 1))
 
 
 level = "DEBUG"

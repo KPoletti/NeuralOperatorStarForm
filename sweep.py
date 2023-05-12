@@ -3,10 +3,10 @@ File for hyperparameter tuning with wandb sweep
 """
 
 import os
-from utils.utilsMain import *
+from src.utilsMain import *
 import torch
 import numpy as np
-import networks.networkUtils as myNet
+import src.networkUtils as myNet
 import argparse
 import logging
 import time
@@ -94,16 +94,16 @@ def main(config=None):
             os.makedirs(f"results/{path}/models")
             os.makedirs(f"results/{path}/plots")
             os.makedirs(f"results/{path}/data")
-
         # SET UP LOGGING
-        logger = logging.getLogger(__name__)
-        logger.setLevel(params.level)
-        fileHandler = logging.FileHandler(f"results/{path}/logs/output.log", mode="w")
-        formatter = logging.Formatter(
-            "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
+        logging.basicConfig(
+            level=os.environ.get("LOGLEVEL", params.level),
+            format="%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s",
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler(f"results/{path}/logs/output.log", mode="w"),
+            ],
         )
-        fileHandler.setFormatter(formatter)
-        logger.addHandler(fileHandler)
+        logging.getLogger("wandb").setLevel(logging.WARNING)
         logger.info(f"Output folder for {path}")
 
         ################################################################

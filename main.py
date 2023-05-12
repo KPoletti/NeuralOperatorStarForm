@@ -1,8 +1,8 @@
 import os
-from utils.utilsMain import *
+from src.utilsMain import *
 import torch
 import numpy as np
-import networks.networkUtils as myNet
+import src.networkUtils as myNet
 import argparse
 import logging
 import time
@@ -78,20 +78,22 @@ def main(params):
         os.makedirs(f"results/{path}/data")
 
     # SET UP LOGGING
-    logger = logging.getLogger(__name__)
-    logger.setLevel(params.level)
-    fileHandler = logging.FileHandler(f"results/{path}/logs/output.log", mode="w")
-    formatter = logging.Formatter(
-        "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
+    logging.basicConfig(
+        level=os.environ.get("LOGLEVEL", params.level),
+        format="%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s",
+        handlers=[
+            # logging.StreamHandler(),
+            logging.FileHandler(f"results/{path}/logs/output.log", mode="w"),
+        ],
     )
-    fileHandler.setFormatter(formatter)
-    logger.addHandler(fileHandler)
-    logger.info(f"Output folder for {path}")
+    logging.getLogger("wandb").setLevel(logging.WARNING)
+
+    logging.info(f"Output folder for {path}")
 
     ################################################################
     # load data
     ################################################################
-    logger.info("........Loading data........")
+    logging.info("........Loading data........")
     dataTime = time.time()
     trainTime, testsTime, validTime = loadData(params, isDensity=False)
     (
@@ -101,14 +103,14 @@ def main(params):
         input_encoder,
         output_encoder,
     ) = prepareDataForTraining(params, params.S)
-    logger.info(f"Data loaded in {time.time() - dataTime} seconds")
+    logging.info(f"Data loaded in {time.time() - dataTime} seconds")
     # initialize device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     ################################################################
     # create neural network
     ################################################################
-    logger.info("........Creating neural network........")
+    logging.info("........Creating neural network........")
     netTime = time.time()
     # create neural network
     model = myNet.initializeNetwork(params)
@@ -120,12 +122,12 @@ def main(params):
         output_encoder.cuda()
         input_encoder.cuda()
     # log the model to debug
-    logger.info(f"Neural network created in {time.time() - netTime} seconds")
+    logging.info(f"Neural network created in {time.time() - netTime} seconds")
 
     ################################################################
     # train neural network
     ################################################################
-    logger.info("........Training neural network........")
+    logging.info("........Training neural network........")
     # train neural network
     Trainer = myNet.Trainer(
         model=model,
@@ -136,7 +138,7 @@ def main(params):
     ################################################################
     # test neural network
     ################################################################
-    logger.info("........Testing neural network........")
+    logging.info("........Testing neural network........")
     # test neural network
     Trainer.evaluate(
         validLoader,

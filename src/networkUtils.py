@@ -14,9 +14,8 @@ import time
 import wandb
 
 logger = logging.getLogger(__name__)
+logging.getLogger("wandb").setLevel(logging.WARNING)
 
-# grab the ending of the density file with .pt
-densityProfile = param.TRAIN_PATH.split("density")[-1].split(".")[0]
 N = int((param.split[0] + param.split[1]) * param.N)
 # create output folder
 path = (
@@ -26,18 +25,6 @@ path = (
     f"_N{N}"
 )
 
-if not os.path.exists(f"results/{path}/logs"):
-    os.makedirs(f"results/{path}/logs")
-    os.makedirs(f"results/{path}/models")
-    os.makedirs(f"results/{path}/plots")
-    os.makedirs(f"results/{path}/data")
-logger.setLevel(param.level)
-fileHandler = logging.FileHandler(f"results/{path}/logs/output.log", mode="w")
-formatter = logging.Formatter(
-    "%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s"
-)
-fileHandler.setFormatter(formatter)
-logger.addHandler(fileHandler)
 
 # define the network architecture
 
@@ -124,20 +111,22 @@ class Trainer(object):
         )  # weighted by 1 / (S**2)
         return diss_loss
 
-    def batchLoop(self, train_loader, output_encoder=None):
+    def batchLoop(self, train_loader, output_encoder=None, epoch: int = 1):
         # initialize loss
         train_loss = 0
-        loss = 0
+        # loss = 0
         diss_loss = 0
         diss_loss_l2 = 0
 
         for batch_idx, sample in enumerate(train_loader):
             data, target = sample["x"].to(self.device), sample["y"].to(self.device)
-            logger.debug(f"Batch Data Shape: {data.shape}")
 
             self.optimizer.zero_grad(set_to_none=True)
             output = self.model(data)
-            logger.debug(f"Output Data Shape: {output.shape}")
+            if epoch == 0 and batch_idx == 0:
+                logger.debug(f"Batch Data Shape: {data.shape}")
+                logger.debug(f"Batch Target Shape: {target.shape}")
+                logger.debug(f"Output Data Shape: {output.shape}")
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -148,10 +137,6 @@ class Trainer(object):
 
             # compute the loss
             loss = self.loss(output.float(), target)
-            logger.debug(f"Loss Shape: {loss.shape}")
-            logger.debug(f"Loss Type: {type(loss)}")
-            logger.debug(f"Loss Value: {loss}")
-            logger.debug(f"Loss Value: {loss.item()}")
             if len(loss.shape) > 1:
                 logger.debug(f"Loss Shape: {loss.shape}")
                 logger.debug(f"Loss Value: {loss.item()}")
@@ -196,8 +181,9 @@ class Trainer(object):
 
             # set to train mode
             self.model.train()
-            train_loss, loss = self.batchLoop(train_loader,output_encoder=output_encoder)
-
+            train_loss, loss = self.batchLoop(
+                train_loader, output_encoder=output_encoder, epoch=epoch
+            )
 
             self.model.eval()
             test_loss = 0
@@ -293,6 +279,8 @@ class Trainer(object):
         Output:
             None
         """
+        logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
         import matplotlib.pyplot as plt
         import seaborn as sns
 
@@ -300,14 +288,16 @@ class Trainer(object):
         sns.set_style("darkgrid")
 
         ############ RMSE ############
+        num_Dims = len(prediction.shape)
+        dims_to_rmse = tuple(range(-num_Dims + 1, 0))
         # compute RMSE
-        rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=(1, 2, 3)))
+        rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=dims_to_rmse))
         # normalize RMSE
-        rmse /= torch.sqrt(torch.mean(truth**2, dim=(1, 2, 3)))
+        rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
         # compute RMSE for each time step
-        relativeRMSE = torch.sqrt(torch.mean((input - truth) ** 2, dim=(1, 2, 3)))
+        relativeRMSE = torch.sqrt(torch.mean((input - truth) ** 2, dim=dims_to_rmse))
         # normalize RMSE
-        relativeRMSE /= torch.sqrt(torch.mean(truth**2, dim=(1, 2, 3)))
+        relativeRMSE /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
 
         try:
             time = timeData["t"]["time"].values
@@ -329,28 +319,28 @@ class Trainer(object):
         plt.close(fig)
 
         ############ RMSE Vs Density ############
-        # compute the RMSE as a function of density
-        predBins, predMean, predSTD = self.densityRMSE(prediction, truth)
-        inputBins, inputMean, inputSTD = self.densityRMSE(input, truth)
-        # plot the RMSE as a function of density
-        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-        ax.loglog(predBins[:-1], predMean, label="Neural RMSE")
-        ax.fill_between(
-            predBins[:-1], predMean - predSTD, predMean + predSTD, alpha=0.2
-        )
-        ax.loglog(inputBins[:-1], inputMean, label="RMSE between time steps")
-        ax.fill_between(
-            inputBins[:-1], inputMean - inputSTD, inputMean + inputSTD, alpha=0.2
-        )
-        ax.set_xlabel(r"Column Density $  \left[\frac{g}{cm^2} \right]$")
-        ax.set_ylabel("RMSE")
-        ax.legend()
-        ax.set_title("RMSE as a function of density")
-        im = wandb.Image(fig)
-        wandb.log({"RMSE vs Density": im})
-        if len(savename) > 0:
-            fig.savefig(f"results/{path}/plots/{savename}_RMSE_vs_density.png")
-        plt.close(fig)
+        # # compute the RMSE as a function of density
+        # predBins, predMean, predSTD = self.densityRMSE(prediction, truth)
+        # inputBins, inputMean, inputSTD = self.densityRMSE(input, truth)
+        # # plot the RMSE as a function of density
+        # fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+        # ax.loglog(predBins[:-1], predMean, label="Neural RMSE")
+        # ax.fill_between(
+        #     predBins[:-1], predMean - predSTD, predMean + predSTD, alpha=0.2
+        # )
+        # ax.loglog(inputBins[:-1], inputMean, label="RMSE between time steps")
+        # ax.fill_between(
+        #     inputBins[:-1], inputMean - inputSTD, inputMean + inputSTD, alpha=0.2
+        # )
+        # ax.set_xlabel(r"Column Density $  \left[\frac{g}{cm^2} \right]$")
+        # ax.set_ylabel("RMSE")
+        # ax.legend()
+        # ax.set_title("RMSE as a function of density")
+        # im = wandb.Image(fig)
+        # wandb.log({"RMSE vs Density": im})
+        # if len(savename) > 0:
+        #     fig.savefig(f"results/{path}/plots/{savename}_RMSE_vs_density.png")
+        # plt.close(fig)
 
     def evaluate(
         self,
@@ -371,16 +361,22 @@ class Trainer(object):
         self.model.eval()
         # create a tensor to store the prediction
         num_samples = len(data_loader.dataset)
-        pred = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
-        rePred = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
-        input = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
-        truth = torch.zeros((num_samples, self.params.T, self.params.S, self.params.S))
+        for batchidx, sample in enumerate(data_loader):
+            data, target = sample["x"].to(self.device), sample["y"].to(self.device)
+            break
+
+        size = [num_samples] + [d for d in data.shape if d != 1]
+        pred = torch.zeros(size)
+        rePred = torch.zeros(size)
+        input = torch.zeros(size)
+        truth = torch.zeros(size)
         test_loss = 0
         re_loss = 0
 
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
+                # apply the input encoder
                 if batchidx > 0:
                     if input_encoder:
                         reData = input_encoder.encode(reData)
@@ -401,18 +397,14 @@ class Trainer(object):
                 test_loss += self.loss(output, target).item()
                 if input_encoder:
                     data = input_encoder.decode(data)
-                # assign the values
-                # index = batchidx * self.params.batch_size
-                # pred[index : index + self.params.batch_size] = output
-                # input[index : index + self.params.batch_size] = data
-                # truth[index : index + self.params.batch_size] = target
-                pred[batchidx : batchidx + 1] = output
-                input[batchidx : batchidx + 1] = data
-                truth[batchidx : batchidx + 1] = target
+                # assign the values to the tensors
+                pred[batchidx] = output
+                input[batchidx] = data
+                truth[batchidx] = target
                 if batchidx > 0:
-                    rePred[batchidx : batchidx + 1] = reData
+                    rePred[batchidx] = reData
                 else:
-                    rePred[batchidx : batchidx + 1] = output
+                    rePred[batchidx] = output
             # normalize test loss
             test_loss /= len(data_loader.dataset)
             re_loss /= len(data_loader.dataset)
