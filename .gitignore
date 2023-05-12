@@ -26,3 +26,4 @@ wandb/*
 *.yaml
 Sweep.job
 sweep_job_file
+JobResults/*

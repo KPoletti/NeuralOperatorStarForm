@@ -10,8 +10,8 @@ data_name = "CATS"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
-poolKernel = 4  # set to 0 to disable pooling
-poolStride = 4  # set to 0 to disable pooling
+poolKernel = 0  # set to 0 to disable pooling
+poolStride = 0  # set to 0 to disable pooling
 #############################################
 # FOR NS Cal-tech Data
 #############################################
@@ -86,7 +86,7 @@ elif data_name == "StarForm":
 ##############################################
 elif data_name == "CATS":
     DATA_PATH = "../dataToSend/MHD_CATS/"
-    TRAIN_PATH = f"{DATA_PATH}CATS_full.pt"
+    TRAIN_PATH = f"{DATA_PATH}CATS_test.pt"
     TIME_PATH = f"{DATA_PATH}../CaltechData/ns_V1e-3_N5000_T50.h5"
 
     log = True
@@ -98,7 +98,7 @@ elif data_name == "CATS":
     input_channels = 1
     output_channels = 1
     modes = 48
-    width = 128
+    width = 24
     N = 2970
 
 
@@ -117,7 +117,7 @@ if poolKernel > 0:
 ##############################################
 NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
 
-encoder = True
+encoder = False
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -134,7 +134,7 @@ if NN == "MNO":
 # Training parameters
 ##############################################
 epochs = 500
-lr = 0.00001
+lr = 0.00005
 scheduler_step = 75
 scheduler_gamma = 0.5
 batch_size = 20
