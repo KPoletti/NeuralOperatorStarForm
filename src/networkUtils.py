@@ -12,6 +12,7 @@ import logging
 import scipy
 import time
 import wandb
+import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
@@ -74,6 +75,26 @@ def initializeNetwork(params: dataclass) -> nn.Module:
     return model
 
 
+def random_plot(input: torch.tensor, output: torch.tensor, target: torch.tensor):
+    """Plots a time point of the input, output, and target"""
+    # select random first and second dimension
+    idx1 = np.random.randint(0, input.shape[0])
+    idx2 = np.random.randint(0, input.shape[1])
+    # create 1 by 3 subplots
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    # plot the input
+    axs[0].imshow(input[idx1, idx2:, :].cpu().detach().numpy())
+    axs[0].set_title(f"Input: {idx1}, {idx2}")
+    # plot the output
+    axs[1].imshow(output[idx1, idx2:, :].cpu().detach().numpy())
+    axs[1].set_title(f"Output: {idx1}, {idx2}")
+    # plot the target
+    axs[2].imshow(target[idx1, idx2:, :].cpu().detach().numpy())
+    axs[2].set_title(f"Target: {idx1}, {idx2}")
+    # save the figure
+    plt.savefig(f"{path}/random_plot.png")
+
+
 class Trainer(object):
     def __init__(
         self, model: nn.Module, params: dataclass, device: torch.device
@@ -117,6 +138,8 @@ class Trainer(object):
         # loss = 0
         diss_loss = 0
         diss_loss_l2 = 0
+        # select a random batch
+        rand_point = np.random.randint(0, len(train_loader))
 
         for batch_idx, sample in enumerate(train_loader):
             data, target = sample["x"].to(self.device), sample["y"].to(self.device)
@@ -127,6 +150,8 @@ class Trainer(object):
                 logger.debug(f"Batch Data Shape: {data.shape}")
                 logger.debug(f"Batch Target Shape: {target.shape}")
                 logger.debug(f"Output Data Shape: {output.shape}")
+            if batch_idx == rand_point and epoch == 34:
+                random_plot(data, output, target)
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -134,7 +159,8 @@ class Trainer(object):
                 target = output_encoder.decode(target)
                 # decode the output
                 output = output_encoder.decode(output)
-
+            if batch_idx == rand_point and epoch == 36:
+                random_plot(data, output, target)
             # compute the loss
             loss = self.loss(output.float(), target)
             if len(loss.shape) > 1:
