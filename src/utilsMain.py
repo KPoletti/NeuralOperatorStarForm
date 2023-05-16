@@ -123,8 +123,22 @@ def timestepSplit(
     dataSet_a = dataSet[..., : params.T_in]
     dataSet_u = dataSet[..., params.T_in : params.T_in + params.T]
     # split the data frame betwen the time step to predict and the time step to use
-    dataInfo_a = dataInfo["t"]
-    dataInfo_u = dataInfo["t+1"]
+    try:
+        dataInfo_a = dataInfo["t"]
+        dataInfo_u = dataInfo["t+1"]
+    except KeyError:
+        logger.warning("No dataInfo['t'] found")
+        # get all the keys in the dataframe
+        keys = dataInfo.keys()
+        keys = [*set([key[0] for key in keys])]
+        keys.sort()
+
+        # find the keys that correspond to the time step to use t+{dN-1}
+        keys_a = [key for key in keys if int(key.split("+")[1]) <= params.T_in - 1]
+        keys_u = [key for key in keys if int(key.split("+")[1]) >= params.T_in - 1]
+        # split the dataframe
+        dataInfo_a = dataInfo[keys_a]
+        dataInfo_u = dataInfo[keys_u]
     return dataSet_a, dataSet_u, dataInfo_a, dataInfo_u
 
 

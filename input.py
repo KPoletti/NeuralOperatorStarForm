@@ -6,7 +6,7 @@ from src.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "CATS"  # NS-Caltech, StarForm, GravColl or CATS
+data_name = "NS-Caltech"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
@@ -28,20 +28,20 @@ if data_name == "NS-Caltech":
     width = 24  # star Form 100
     T = 10
     T_in = 10
-    poolKernel = 2  # set to 0 to disable pooling
-    poolStride = 2  # set to 0 to disable pooling
+    poolKernel = 0  # set to 0 to disable pooling
+    poolStride = 0  # set to 0 to disable pooling
 
 ##############################################
 # For Grav Collapse
 ##############################################
 elif data_name == "GravColl":
     S = 800
-    T = 1
-    T_in = 1
+    T = 5
+    T_in = 5
     DATA_PATH = "../dataToSend/TrainingData/"
-    dN = 1
+    dN = 10
     # two options for mass: "_M1.2" or "_M1"
-    mass = "_M1.2"
+    mass = "_M1"
     if mass == "_M1.2":
         dt = 0.019
     elif mass == "_M1":
@@ -53,10 +53,10 @@ elif data_name == "GravColl":
     log = True
     N = 150
     data_name = f"{data_name}{mass}_dN{dN}"
-    input_channels = 1
-    output_channels = 1
-    modes = 12  # star Form 20
-    width = 24  # star Form 100
+    input_channels = 5
+    output_channels = 5
+    modes = 22  # star Form 20
+    width = 84  # star Form 100
     poolKernel = 4  # set to 0 to disable pooling
     poolStride = 4  # set to 0 to disable pooling
 
@@ -121,9 +121,9 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO3d"  # "FNO2d", "MNO", "FNO"
+NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
 
-encoder = False
+encoder = True
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -139,9 +139,9 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 2
-lr = 0.00005
-scheduler_step = 75
+epochs = 50
+lr = 0.002856
+scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 20
 optimizer = "Adam"

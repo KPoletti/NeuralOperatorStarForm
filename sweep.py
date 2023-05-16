@@ -71,7 +71,7 @@ def set_Loss(params):
 def main(config=None):
     import input as params
 
-    with wandb.init(project=f"{params.data_name}_sweep", config=config):
+    with wandb.init(project=f"{params.data_name}", config=config):
         config = wandb.config
         # reset values based on sweep
         # TODO: make this more general
@@ -99,7 +99,7 @@ def main(config=None):
             level=os.environ.get("LOGLEVEL", params.level),
             format="%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s",
             handlers=[
-                logging.StreamHandler(),
+                # logging.StreamHandler(),
                 logging.FileHandler(f"results/{path}/logs/output.log", mode="w"),
             ],
         )
