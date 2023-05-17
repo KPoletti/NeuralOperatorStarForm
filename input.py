@@ -6,7 +6,7 @@ from src.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "NS-Caltech"  # NS-Caltech, StarForm, GravColl or CATS
+data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
@@ -55,8 +55,8 @@ elif data_name == "GravColl":
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
-    modes = 22  # star Form 20
-    width = 84  # star Form 100
+    modes = 12  # star Form 20
+    width = 24  # star Form 100
     poolKernel = 4  # set to 0 to disable pooling
     poolStride = 4  # set to 0 to disable pooling
 
@@ -121,9 +121,9 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO2d"  # "FNO2d", "MNO", "FNO"
+NN = "FNO3d"  # "FNO2d", "MNO", "FNO"
 
-encoder = True
+encoder = False
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -139,8 +139,8 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 50
-lr = 0.002856
+epochs = 150
+lr = 0.00028
 scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 20

@@ -75,7 +75,9 @@ def initializeNetwork(params: dataclass) -> nn.Module:
     return model
 
 
-def random_plot(input: torch.tensor, output: torch.tensor, target: torch.tensor):
+def random_plot(
+    input: torch.tensor, output: torch.tensor, target: torch.tensor, savename: str
+):
     """Plots a time point of the input, output, and target"""
     # select random first and second dimension
     idx1 = np.random.randint(0, input.shape[0])
@@ -83,16 +85,19 @@ def random_plot(input: torch.tensor, output: torch.tensor, target: torch.tensor)
     # create 1 by 3 subplots
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
     # plot the input
-    axs[0].imshow(input[idx1, idx2:, :].cpu().detach().numpy())
+    im0 = axs[0].imshow(input[idx1, idx2, :, :].cpu().detach().numpy())
     axs[0].set_title(f"Input: {idx1}, {idx2}")
+    fig.colorbar(im0, ax=axs[0])
     # plot the output
-    axs[1].imshow(output[idx1, idx2:, :].cpu().detach().numpy())
+    im1 = axs[1].imshow(output[idx1, idx2, :, :].cpu().detach().numpy())
     axs[1].set_title(f"Output: {idx1}, {idx2}")
+    fig.colorbar(im1, ax=axs[1])
     # plot the target
-    axs[2].imshow(target[idx1, idx2:, :].cpu().detach().numpy())
+    im2 = axs[2].imshow(target[idx1, idx2, :, :].cpu().detach().numpy())
     axs[2].set_title(f"Target: {idx1}, {idx2}")
+    fig.colorbar(im2, ax=axs[2])
     # save the figure
-    plt.savefig(f"{path}/random_plot.png")
+    plt.savefig(f"results/{path}/plots/random_plot_{savename}_id1{idx1}_id2{idx2}.png")
 
 
 class Trainer(object):
@@ -150,8 +155,8 @@ class Trainer(object):
                 logger.debug(f"Batch Data Shape: {data.shape}")
                 logger.debug(f"Batch Target Shape: {target.shape}")
                 logger.debug(f"Output Data Shape: {output.shape}")
-            if batch_idx == rand_point and epoch == 34:
-                random_plot(data, output, target)
+            if batch_idx == rand_point and epoch == 33:
+                random_plot(data, output, target, savename="train")
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -159,8 +164,8 @@ class Trainer(object):
                 target = output_encoder.decode(target)
                 # decode the output
                 output = output_encoder.decode(output)
-            if batch_idx == rand_point and epoch == 36:
-                random_plot(data, output, target)
+            if batch_idx == rand_point and epoch == 37:
+                random_plot(data, output, target, savename="train_decoded")
             # compute the loss
             loss = self.loss(output.float(), target)
             if len(loss.shape) > 1:
@@ -198,7 +203,7 @@ class Trainer(object):
         self.loss = self.params.loss_fn
         # define a test loss function that will be the same regardless of training
         if sweep:
-            test_loss_fn = LpLoss(d=2, p=2, reduce_dims=(0, 1))
+            test_loss_fn = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         else:
             test_loss_fn = self.loss
         # start training
@@ -316,6 +321,7 @@ class Trainer(object):
         ############ RMSE ############
         num_Dims = len(prediction.shape)
         dims_to_rmse = tuple(range(-num_Dims + 1, 0))
+
         # compute RMSE
         rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=dims_to_rmse))
         # normalize RMSE
@@ -326,10 +332,13 @@ class Trainer(object):
         relativeRMSE /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
 
         try:
-            time = timeData["t"]["time"].values
-        except:
+            time = timeData["t+0"]["time"].values
+        except NameError:
             time = np.arange(0, prediction.shape[0])
-            logger.info("Failed true time data")
+            logger.info("Failed time data")
+        except KeyError:
+            time = timeData["t"]["time"].values
+
         # plot RMSE for each time step
         fig, ax = plt.subplots(1, 1, figsize=(10, 10))
         ax.plot(time, rmse, label="Neural RMSE")
@@ -398,6 +407,7 @@ class Trainer(object):
         truth = torch.zeros(size)
         test_loss = 0
         re_loss = 0
+        rand_point = np.random.randint(0, len(data_loader))
 
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
@@ -411,26 +421,30 @@ class Trainer(object):
                 output = self.model(data)
                 if batchidx == 0:
                     reData = output.clone()
+
+                if batchidx == rand_point:
+                    random_plot(data, output, target, "valid")
+                    random_plot(data, reData, target, "rolling")
+
                 # decode  if there is an output encoder
                 if output_encoder:
-                    # decode the target
-                    # target = output_encoder.decode(target)
                     # decode the output
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
                     reData = output_encoder.decode(reData)
                 re_loss += self.loss(reData, target).item()
                 test_loss += self.loss(output, target).item()
-                if input_encoder:
+                if input_encoder is not None:
                     data = input_encoder.decode(data)
+                if batchidx == rand_point + 1:
+                    random_plot(data, output, target, savename="valid_decoded")
+                    random_plot(data, reData, target, "rolling_decoded")
+
                 # assign the values to the tensors
                 pred[batchidx] = output
                 input[batchidx] = data
                 truth[batchidx] = target
-                if batchidx > 0:
-                    rePred[batchidx] = reData
-                else:
-                    rePred[batchidx] = output
+                rePred[batchidx] = reData
             # normalize test loss
             test_loss /= len(data_loader.dataset)
             re_loss /= len(data_loader.dataset)
