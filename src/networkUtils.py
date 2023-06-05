@@ -3,6 +3,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from neuralop.models import FNO3d, FNO2d, FNO
+from cliffordlayers.models.utils import partialclass
+from cliffordlayers.models.models_2d import (
+    CliffordNet2d,
+    CliffordFourierBasicBlock2d,
+)
+from cliffordlayers.models.models_3d import (
+    CliffordNet3d,
+    CliffordFourierBasicBlock3d,
+)
 from neuralop.training.losses import LpLoss, H1Loss
 from dataclasses import dataclass
 import numpy as np
@@ -16,7 +25,7 @@ import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
-
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
 N = int((param.split[0] + param.split[1]) * param.N)
 # create output folder
 path = (
@@ -38,7 +47,13 @@ def initializeNetwork(params: dataclass) -> nn.Module:
     Output:
         model: torch.nn.Module
     """
-    models = {"FNO3d": FNO3d, "MNO": FNO2d, "FNO": FNO}
+    models = {
+        "FNO3d": FNO3d,
+        "MNO": FNO2d,
+        "FNO": FNO,
+        "CNL2d": CliffordNet2d,
+        "CNL3d": CliffordNet3d,
+    }
     # TODO: allow MLP to be input parameter
     if params.NN == "FNO2d":
         model = FNO2d(
@@ -71,6 +86,40 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             use_mlp=True,
             mlp={"expansion": 0.5, "dropout": 0},
         )
+    elif params.NN == "CNL2d":
+        model = CliffordNet2d(
+            g=[-1, -1],
+            block=partialclass(
+                "CliffordFourierBasicBlock2d",
+                CliffordFourierBasicBlock2d,
+                modes1=params.modes,
+                modes2=params.modes,
+            ),
+            num_blocks=[1, 1, 1, 1],
+            in_channels=params.input_channels,
+            out_channels=params.output_channels,
+            hidden_channels=params.width,
+            activation=F.gelu,
+            norm=False,
+            rotation=False,
+        )
+    elif params.NN == "CNL3d":
+        model = CliffordNet3d(
+            g=[1, 1, 1],
+            block=partialclass(
+                "CliffordFourierBasicBlock3d",
+                CliffordFourierBasicBlock3d,
+                modes1=params.modes,
+                modes2=params.modes,
+                modes3=params.modes,
+            ),
+            num_blocks=[1, 1, 1, 1],
+            in_channels=4,
+            out_channels=1,
+            hidden_channels=params.width,
+            activation=F.gelu,
+            norm=False,
+        )
     logger.debug(model)
     return model
 
@@ -82,6 +131,13 @@ def random_plot(
     # select random first and second dimension
     idx1 = np.random.randint(0, input.shape[0])
     idx2 = np.random.randint(0, input.shape[1])
+    # check the shape of the input
+    if len(input.shape) > 4:
+        d = np.random.randint(0, input.shape[-1])
+        input = input[..., d]
+        output = output[..., d]
+        target = target[..., d]
+
     # create 1 by 3 subplots
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
     # plot the input
@@ -145,7 +201,7 @@ class Trainer(object):
         diss_loss_l2 = 0
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
-
+        torch.autograd.set_detect_anomaly(True)
         for batch_idx, sample in enumerate(train_loader):
             data, target = sample["x"].to(self.device), sample["y"].to(self.device)
 
@@ -164,7 +220,8 @@ class Trainer(object):
                 target = output_encoder.decode(target)
                 # decode the output
                 output = output_encoder.decode(output)
-            if batch_idx == rand_point and epoch == 37:
+
+            if batch_idx == rand_point and epoch == 33:
                 random_plot(data, output, target, savename="train_decoded")
             # compute the loss
             loss = self.loss(output.float(), target)
@@ -229,8 +286,8 @@ class Trainer(object):
                         output = output_encoder.decode(output)
                         # target = output_encoder.decode(target)
                         # do not decode the test target because the test data is not encoded
-
                     test_loss += test_loss_fn(output, target).item()
+
             test_loss /= len(test_loader.dataset)
             train_loss /= len(train_loader.dataset)
             self.scheduler.step()
@@ -249,8 +306,11 @@ class Trainer(object):
                 f"Test Loss: {test_loss:.6f}"
             )
             wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
-        if self.params.saveNeuralNetwork:
-            torch.save(self.model, f"results/{path}/models/{self.params.NN}")
+        try:
+            if self.params.saveNeuralNetwork:
+                torch.save(self.model, f"results/{path}/models/{self.params.NN}")
+        except:
+            logger.error("Failed to save model")
 
     def densityRMSE(
         self,
@@ -413,29 +473,33 @@ class Trainer(object):
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
                 # apply the input encoder
-                if batchidx > 0:
-                    if input_encoder:
+                output = self.model(data)
+                # apply the model to previous output
+                if batchidx == 0:
+                    reData = output.clone()
+                elif batchidx > 0:
+                    if input_encoder is not None:
                         reData = input_encoder.encode(reData)
                     # apply the model to previous output
                     reData = self.model(reData)
-                output = self.model(data)
-                if batchidx == 0:
-                    reData = output.clone()
 
                 if batchidx == rand_point:
                     random_plot(data, output, target, "valid")
                     random_plot(data, reData, target, "rolling")
 
                 # decode  if there is an output encoder
-                if output_encoder:
+                if output_encoder is not None:
                     # decode the output
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
                     reData = output_encoder.decode(reData)
+                # compute the loss
                 re_loss += self.loss(reData, target).item()
                 test_loss += self.loss(output, target).item()
+
                 if input_encoder is not None:
                     data = input_encoder.decode(data)
+
                 if batchidx == rand_point + 1:
                     random_plot(data, output, target, savename="valid_decoded")
                     random_plot(data, reData, target, "rolling_decoded")

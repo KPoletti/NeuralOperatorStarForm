@@ -5,6 +5,7 @@ import wandb
 from neuralop.utils import UnitGaussianNormalizer
 from neuralop.datasets.tensor_dataset import TensorDataset
 import logging
+import numpy as np
 
 # initialize logger
 logger = logging.getLogger(__name__)
@@ -29,6 +30,13 @@ def dataSplit(params) -> tuple:
     trainSize = int(tmp * params.split[0])
     testSize = int(tmp * params.split[1])
     validSize = int(tmp * params.split[2]) - 1
+    # confirm no overlap or zeros
+    try:
+        assert trainSize + testSize + validSize == tmp
+    except AssertionError:
+        logger.warning("Data split is not correct. Manually setting split.")
+        validSize = tmp - trainSize - testSize
+
     return trainSize, testSize, validSize
 
 
@@ -44,13 +52,48 @@ def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
     """
     logger.debug(f"Pooling data with kernel size {params.poolKernel}")
     # permute the data to pool across density
-    data = data.permute(0, 3, 1, 2)
-    data = torch.nn.functional.avg_pool2d(
-        data, kernel_size=params.poolKernel, stride=params.poolStride
-    )
-    # permute the data back to the original shape
-    data = data.permute(0, 2, 3, 1)
+    if len(data.shape) == 4:
+        data = data.permute(0, 3, 1, 2)
+        data = torch.nn.functional.avg_pool2d(
+            data, kernel_size=params.poolKernel, stride=params.poolStride
+        )
+        # permute the data back to the original shape
+        data = data.permute(0, 2, 3, 1)
+    elif len(data.shape) == 5:
+        kernel = (1, params.poolKernel, params.poolKernel)
+        stride = (1, params.poolStride, params.poolStride)
+        data = data.permute(0, 3, 4, 1, 2)
+        data = torch.nn.functional.avg_pool3d(data, kernel_size=kernel, stride=stride)
+        # permute the data back to the original shape
+        data = data.permute(0, 3, 4, 1, 2)
     return data
+
+
+class Log10Normalizer:
+    def __init__(self, data):
+        super().__init__()
+        self.data = data
+        self.min = data.min()
+        self.max = data.max()
+        self.shape = data.shape
+
+    def encode(self, data):
+        if data.shape[-1] == 3:
+            data[..., 0] = data[..., 0].log10()
+            return data
+        else:
+            return data.log10()
+
+    def decode(self, data):
+        base = torch.tensor(10.0)
+        if data.shape[-1] == 3:
+            data[..., 0] = base.pow(data[..., 0])
+            return base.pow(data)
+        else:
+            return base.pow(data)
+
+    def cuda(self):
+        return self
 
 
 def loadData(params: dataclass, isDensity: bool) -> tuple:
@@ -85,9 +128,9 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
         filename = params.TRAIN_PATH
         fullData = torch.load(filename)
         if params.log:
-            fullData = torch.log10(fullData).float()
-        else:
-            fullData = fullData.float()
+            log_encoder = Log10Normalizer(fullData)
+            fullData = log_encoder.encode(fullData)
+        fullData = fullData.float()
         if params.poolKernel > 0:
             fullData = averagePooling(fullData, params)
         logger.debug(f"Full Data Shape: {fullData.shape}")
@@ -140,6 +183,44 @@ def timestepSplit(
         dataInfo_a = dataInfo[keys_a]
         dataInfo_u = dataInfo[keys_u]
     return dataSet_a, dataSet_u, dataInfo_a, dataInfo_u
+
+
+class multiVarible_normalizer:
+    def __init__(self, data):
+        super().__init__()
+        self.data = data
+        self.rho = data
+        self.rho_encoder = UnitGaussianNormalizer(data[..., 0])
+        self.vel_encoder = UnitGaussianNormalizer(data[..., 1:], verbose=True)
+
+    def encode(self, data):
+        rho = self.rho_encoder.encode(data[..., 0])
+        vel = self.vel_encoder.encode(data[..., 1:])
+        data[..., 0] = rho
+        data[..., 1:] = vel
+        return data
+
+    def decode(self, data):
+        rho = self.rho_encoder.decode(data[..., 0])
+        vel = self.vel_encoder.decode(data[..., 1:])
+        data[..., 0] = rho
+        data[..., 1:] = vel
+        return data
+
+    def cuda(self):
+        self.rho_encoder.cuda()
+        self.vel_encoder.cuda()
+        return self
+
+    def cpu(self):
+        self.rho_encoder.cpu()
+        self.vel_encoder.cpu()
+        return self
+
+    def to(self, device):
+        self.rho_encoder.to(device)
+        self.vel_encoder.to(device)
+        return self
 
 
 def prepareDataForTraining(params: dataclass, S: int) -> tuple:
@@ -219,7 +300,8 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         trainData_u = trainData_u.permute(0, 3, 4, 1, 2)
         testsData_u = testsData_u.permute(0, 3, 4, 1, 2)
         validData_u = validData_u.permute(0, 3, 4, 1, 2)
-    if ("FNO2d" in params.NN) or ("MNO" in params.NN):
+
+    elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
         trainData_a = trainData_a.reshape(trainSize, S, S, params.T_in)
         testsData_a = testsData_a.reshape(testsSize, S, S, params.T_in)
         validData_a = validData_a.reshape(validSize, S, S, params.T_in)
@@ -231,17 +313,58 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         testsData_u = testsData_u.permute(0, 3, 1, 2)
         validData_u = validData_u.permute(0, 3, 1, 2)
 
-    if params.encoder:
+    elif "CNL2d" in params.NN:
+        num_dims = trainData.shape[-2]
+        # trainData_a = trainData_a.reshape(trainSize, params.T_in, S, S, num_dims)
+        # testsData_a = testsData_a.reshape(testsSize, params.T_in, S, S, num_dims)
+        # validData_a = validData_a.reshape(validSize, params.T_in, S, S, num_dims)
+        x_a = trainData_a.permute(0, 4, 1, 2, 3)
+        testsData_a = testsData_a.permute(0, 4, 1, 2, 3)
+        validData_a = validData_a.permute(0, 4, 1, 2, 3)
+
+        # select rand ind of Train data
+        ind_t = np.random.randint(0, trainData_a.shape[-1])
+        ind_pt = np.random.randint(0, trainData_a.shape[0])
+
+        # assert that the data is correctly permuted
+        torch.testing.assert_close(
+            x_a[ind_pt, ind_t, :, :, :], trainData_a[ind_pt, :, :, :, ind_t]
+        )
+        trainData_a = x_a
+
+        # permute u data
+        trainData_u = trainData_u.permute(0, 4, 1, 2, 3)
+        testsData_u = testsData_u.permute(0, 4, 1, 2, 3)
+        validData_u = validData_u.permute(0, 4, 1, 2, 3)
+
+    # configure encoder
+    if params.encoder and "GravColl" not in params.data_name:
         # normailze input data
-        input_encoder = UnitGaussianNormalizer(trainData_a, verbose=False)
+        input_encoder = UnitGaussianNormalizer(trainData_a, verbose=True)
         trainData_a = input_encoder.encode(trainData_a)
         testsData_a = input_encoder.encode(testsData_a)
         validData_a = input_encoder.encode(validData_a)
         # normalize output data
-        output_encoder = UnitGaussianNormalizer(trainData_u, verbose=False)
+        output_encoder = UnitGaussianNormalizer(trainData_u, verbose=True)
         trainData_u = output_encoder.encode(trainData_u)
-        # testsData_u = output_encoder.encode(testsData_u)
-        # validData_u = output_encoder.encode(validData_u)
+
+    elif params.encoder and "GravColl" in params.data_name:
+        # normalize over the entire dataset
+        full_data_a = torch.cat([trainData_a, testsData_a, validData_a], dim=0)
+        input_encoder = multiVarible_normalizer(full_data_a)
+        # input_encoder = UnitGaussianNormalizer(full_data_a, verbose=True)
+        trainData_a = input_encoder.encode(trainData_a)
+        testsData_a = input_encoder.encode(testsData_a)
+        validData_a = input_encoder.encode(validData_a)
+        # normalize output data
+        full_data_u = torch.cat([trainData_u, testsData_u, validData_u], dim=0)
+        output_encoder = multiVarible_normalizer(full_data_u)
+        # output_encoder = UnitGaussianNormalizer(full_data_u, verbose=True)
+        trainData_u = output_encoder.encode(trainData_u)
+        # delete the full data
+        del full_data_a
+        del full_data_u
+
     else:
         output_encoder = None
         input_encoder = None
@@ -261,7 +384,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         assert testsData_a.shape == testsData_u.shape
         assert validData_a.shape == validData_u.shape
     except AssertionError:
-        logger.warning("Data shapes do not match. Manually fixing.")
+        logger.error("Data shapes do not match. Manually fixing.")
 
     # Load the data into a tensor dataset
     trainDataset = TensorDataset(
@@ -277,10 +400,13 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         validData_u,
     )
     # Create the data loader
+
+    # TODO: Fix the batch size for the tests and valid loaders
+    # On gravcoll, for (15, 10, 200, 200 ,3) the test loss will grow if validSize =0
     trainLoader = torch.utils.data.DataLoader(
         trainDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
     )
-    if trainSize >= params.batch_size:
+    if testsSize >= params.batch_size * 2:
         testLoader = torch.utils.data.DataLoader(
             testsDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
         )

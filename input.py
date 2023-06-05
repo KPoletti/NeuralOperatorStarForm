@@ -41,22 +41,33 @@ elif data_name == "GravColl":
     DATA_PATH = "../dataToSend/TrainingData/"
     dN = 10
     # two options for mass: "_M1.2" or "_M1"
-    mass = "_M1"
+    mass = "ALL"
+    extras = ""
     if mass == "_M1.2":
         dt = 0.019
     elif mass == "_M1":
         dt = 0.02
+    elif mass == "1.2" or mass == "ALL":
+        dt = 0.0186
+        extras = "_multiData"
+    else:
+        dt = 0.02
     sub = 1
 
-    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}.pt"
-    TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}.h5"
-    log = True
-    N = 150
+    # TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.pt"
+    # TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.h5"
+
+    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.pt"
+    TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.h5"
+    log = False
+    N = 15
+    if mass == "ALL":
+        N = 30
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
-    modes = 12  # star Form 20
-    width = 24  # star Form 100
+    modes = 16  # star Form 20
+    width = 32  # star Form 100
     poolKernel = 4  # set to 0 to disable pooling
     poolStride = 4  # set to 0 to disable pooling
 
@@ -121,9 +132,9 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO3d"  # "FNO2d", "MNO", "FNO"
+NN = "CNL2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
 
-encoder = False
+encoder = True
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -139,14 +150,14 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 150
-lr = 0.00028
+epochs = 500
+lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5
-batch_size = 20
+batch_size = 3
 optimizer = "Adam"
 loss_name = "LpLoss"
-if NN == "FNO3d":
+if NN == "FNO3d" or NN == "CNL2d":
     d = 3
 else:
     d = 2
