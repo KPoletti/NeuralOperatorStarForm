@@ -6,7 +6,7 @@ from src.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
+data_name = "NS-Caltech"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
@@ -81,8 +81,8 @@ elif data_name == "StarForm":
     T = 1
     T_in = 1
     DATA_PATH = "../dataToSend/TrainingData/"
-    DATA_PATH = "../dataToSend/FullDataTensor/"
-    mu = "ALL"
+    # DATA_PATH = "../dataToSend/FullDataTensor/"
+    mu = "2"
     dN = 10
     sub = 1
 
@@ -132,7 +132,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "CNL2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
+NN = "FNO2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
 
 encoder = True
 if NN == "MNO":
