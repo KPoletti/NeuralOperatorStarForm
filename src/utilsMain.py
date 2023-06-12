@@ -40,7 +40,6 @@ def dataSplit(params) -> tuple:
     return trainSize, testSize, validSize
 
 
-# TODO: Add average pooling function
 def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
     """
     Average pool the data to reduce the size of the image
@@ -127,10 +126,10 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
     if isDensity:
         filename = params.TRAIN_PATH
         fullData = torch.load(filename)
+        fullData = fullData.float()
         if params.log:
             log_encoder = Log10Normalizer(fullData)
             fullData = log_encoder.encode(fullData)
-        fullData = fullData.float()
         if params.poolKernel > 0:
             fullData = averagePooling(fullData, params)
         logger.debug(f"Full Data Shape: {fullData.shape}")
@@ -194,12 +193,12 @@ class multiVarible_normalizer:
         data: torch.tensor normalized data
     """
 
-    def __init__(self, data):
+    def __init__(self, data, verbose):
         super().__init__()
         self.data = data
         self.rho = data
-        self.rho_encoder = UnitGaussianNormalizer(data[..., 0])
-        self.vel_encoder = UnitGaussianNormalizer(data[..., 1:], verbose=True)
+        self.rho_encoder = UnitGaussianNormalizer(data[..., 0], verbose=verbose)
+        self.vel_encoder = UnitGaussianNormalizer(data[..., 1:], verbose=verbose)
 
     def encode(self, data):
         rho = self.rho_encoder.encode(data[..., 0])

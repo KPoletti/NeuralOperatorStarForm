@@ -6,7 +6,7 @@ from src.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "NS-Caltech"  # NS-Caltech, StarForm, GravColl or CATS
+data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
 
 
 # Pooling parameters
@@ -38,38 +38,41 @@ elif data_name == "GravColl":
     S = 800
     T = 5
     T_in = 5
-    DATA_PATH = "../dataToSend/TrainingData/"
+    DATA_PATH = "../dataToSend/TrainingData/Simulations/"
     dN = 10
     # two options for mass: "_M1.2" or "_M1"
+    # mass = "ALL"
+    # extras = ""
+    # if mass == "_M1.2":
+    #     dt = 0.019
+    # elif mass == "_M1":
+    #     dt = 0.02
+    # elif mass == "1.2" or mass == "ALL":
+    #     dt = 0.0186
+    #     extras = "_multiData"
+    # else:
+    #     dt = 0.02
+    # sub = 1
+    # Grav_M1.00_dN10_dt0.0204_multiData
     mass = "ALL"
-    extras = ""
-    if mass == "_M1.2":
-        dt = 0.019
-    elif mass == "_M1":
-        dt = 0.02
-    elif mass == "1.2" or mass == "ALL":
-        dt = 0.0186
-        extras = "_multiData"
-    else:
-        dt = 0.02
-    sub = 1
-
+    # dt = 0.0204
+    extras = "_multiData"
     # TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.pt"
     # TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.h5"
 
-    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.pt"
+    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled.pt"
     TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.h5"
     log = False
-    N = 15
+    N = 14
     if mass == "ALL":
-        N = 30
+        N = 902
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
     modes = 16  # star Form 20
     width = 32  # star Form 100
-    poolKernel = 4  # set to 0 to disable pooling
-    poolStride = 4  # set to 0 to disable pooling
+    poolKernel = 0  # set to 0 to disable pooling
+    poolStride = 0  # set to 0 to disable pooling
 
 ##############################################
 # For MHD Star Formation Data
@@ -132,7 +135,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
+NN = "CNL2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
 
 encoder = True
 if NN == "MNO":
@@ -150,7 +153,7 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 500
+epochs = 3
 lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5
@@ -172,7 +175,7 @@ file = "output.log"
 log_interval = 100
 
 # Option to Save NN
-saveNeuralNetwork = True
+saveNeuralNetwork = False
 
 # Option to create plots
 doPlot = True

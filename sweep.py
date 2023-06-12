@@ -188,42 +188,6 @@ if __name__ == "__main__":
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
     paramsDict = convertParamsToJSON(params)
-    # define the sweep_config
-    sweep_config = {
-        "method": "random",
-        "metric": {"name": "Test-Loss", "goal": "minimize"},
-    }
-    # create the sweep parameters
-    sweep_params = {
-        "modes": {"distribution": "int_uniform", "min": 4, "max": 48},
-        "width": {
-            "distribution": "q_log_uniform_values",
-            "q": 4,
-            "min": 12,
-            "max": 168,
-        },
-        "encoder": {"values": [True, False]},
-        "lr": {"distribution": "log_uniform_values", "min": 1e-8, "max": 1e-1},
-        "scheduler_step": {"values": [5, 10, 25, 35, 50, 60, 75, 100]},
-        "loss_name": {"values": ["LpLoss", "H1Loss"]},
-        "batch_size": {"values": [5, 10, 15, 25]},
-    }
-    # create a list of the sweep parameters
-    sweep_params_list = list(sweep_params.keys())
-    # loop over paramsDict and to sweep params if they are not in sweep_params
-    for key, value in paramsDict.items():
-        if key not in sweep_params.keys():
-            sweep_params[key] = {"value": value}
-    # add sweep parameters to sweep_config
-    sweep_config["parameters"] = sweep_params
-    # Save the sweep config to a yaml file
-    # with open(f"sweep_config_{params.data_name}.yaml", "w") as f:
-    #     yaml.dump(sweep_config, f)
-
-    # create the sweep_id
-    # sweep_id = wandb.sweep(sweep_config, project=f"{params.data_name}_sweep")
-    # run the sweep agent
-    # wandb.agent(sweep_id, function=main, count=10)
     with open(f"./sweep_config_{params.data_name}.yaml") as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     main(config=config)

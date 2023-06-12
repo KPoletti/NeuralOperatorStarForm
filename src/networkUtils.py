@@ -380,6 +380,19 @@ class Trainer(object):
 
         ############ RMSE ############
         num_Dims = len(prediction.shape)
+        ind = -1
+        if num_Dims == 5:
+            # select a random int between 0 and
+            ind = np.random.randint(0, 2)
+            t_ind = np.random.randint(0, self.params.dN - 1)
+            # reduce the data to only that index
+            # prediction = prediction[:, :, :, ind, :].permute(0, 3, 1, 2).flatten(0, 1)
+            prediction = prediction[:, :, :, ind, t_ind]
+            truth = truth[:, :, :, ind, t_ind]
+            input = input[:, :, :, ind, t_ind]
+            # and (n,x,y,t) flatten to (t*n, x, y)
+            num_Dims = len(prediction.shape)
+
         dims_to_rmse = tuple(range(-num_Dims + 1, 0))
 
         # compute RMSE
@@ -401,11 +414,11 @@ class Trainer(object):
 
         # plot RMSE for each time step
         fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-        ax.plot(time, rmse, label="Neural RMSE")
-        ax.plot(time, relativeRMSE, label="RMSE between time steps")
+        ax.plot(time, rmse, ".", label="Neural RMSE")
+        ax.plot(time, relativeRMSE, ".", label="RMSE between time steps")
         ax.set_xlabel("Time (Myr)")
         ax.set_ylabel("Normalized  RMSE")
-        ax.set_title("RMSE Over Time")
+        ax.set_title(f"RMSE Over Time for index {ind}, t_0 {t_ind}")
         ax.legend()
         im = wandb.Image(fig)
         wandb.log({"RMSE": im})
