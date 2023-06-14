@@ -77,16 +77,16 @@ class Log10Normalizer:
         self.shape = data.shape
 
     def encode(self, data):
-        if data.shape[-1] == 3:
-            data[..., 0] = data[..., 0].log10()
+        if data.shape[-2] == 3:
+            data[..., 0, :] = data[..., 0, :].log10()
             return data
         else:
             return data.log10()
 
     def decode(self, data):
         base = torch.tensor(10.0)
-        if data.shape[-1] == 3:
-            data[..., 0] = base.pow(data[..., 0])
+        if data.shape[-2] == 3:
+            data[..., 0, :] = base.pow(data[..., 0, :])
             return base.pow(data)
         else:
             return base.pow(data)
