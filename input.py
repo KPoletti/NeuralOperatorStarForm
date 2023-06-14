@@ -66,11 +66,12 @@ elif data_name == "GravColl":
     N = 14
     if mass == "ALL":
         N = 902
+        N = 300
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
-    modes = 10  # star Form 20
-    width = 24  # star Form 100
+    modes = 12  # star Form 20
+    width = 12  # star Form 100
     poolKernel = 0  # set to 0 to disable pooling
     poolStride = 0  # set to 0 to disable pooling
 
@@ -137,7 +138,7 @@ if poolKernel > 0:
 ##############################################
 NN = "CNL2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
 
-encoder = False
+encoder = True
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -153,7 +154,7 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 100
+epochs = 20
 lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5

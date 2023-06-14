@@ -3,6 +3,7 @@ from src.utilsMain import *
 import torch
 import numpy as np
 import src.networkUtils as myNet
+import src.train as myTrain
 import argparse
 import logging
 import time
@@ -130,7 +131,7 @@ def main(params):
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
-    Trainer = myNet.Trainer(
+    Trainer = myTrain.Trainer(
         model=model,
         params=params,
         device=device,
