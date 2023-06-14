@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pandas as pd
 import wandb
 from neuralop.utils import UnitGaussianNormalizer
-from neuralop.datasets.tensor_dataset import TensorDataset
+from src.meta_dataset import TensorDataset
 import logging
 import numpy as np
 
@@ -184,6 +184,31 @@ def timestepSplit(
     return dataSet_a, dataSet_u, dataInfo_a, dataInfo_u
 
 
+def dfTolist(df: pd.DataFrame) -> list:
+    """
+    Convert a dataframe to a list of tensors
+    Input:
+        df: pd.DataFrame to convert
+    Output:
+        list of tensors
+    """
+    # convert the dataframe to a list of tensors
+
+    data = []
+    # find keys of the dataframe
+    keys = df.keys()
+    for i in range(len(df)):
+        info = {}
+        # find the mass of the star
+        snap = df.iloc[i][keys[0][0]]["file"]
+        # split the file by mass
+        info["mass"] = snap.split("M")[-1].split("_")[0]
+        info["time"] = [df.iloc[i][key[0]]["time"] for key in keys[::2]]
+        # append info to the list
+        data.append(info)
+    return data
+
+
 class multiVarible_normalizer:
     """
     Normalize the data by the mean and standard deviation for velocity and density separately
@@ -328,7 +353,6 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         validData, validTime, params
     )
     # TODO: Figure out how to include the timesteps in the data
-
     if params.level == "DEBUG":
         print(f"Train Data Shape: {trainData_a.shape}")
         print(f"Test Data Shape: {testsData_a.shape}")
@@ -376,9 +400,24 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         logger.error("Data shapes do not match. Manually fixing.")
 
     # Load the data into a tensor dataset
-    trainDataset = TensorDataset(trainData_a, trainData_u)
-    testsDataset = TensorDataset(testsData_a, testsData_u)
-    validDataset = TensorDataset(validData_a, validData_u)
+    trainDataset = TensorDataset(
+        trainData_a,
+        trainData_u,
+        dfTolist(trainTime_a),
+        dfTolist(trainTime_u),
+    )
+    testsDataset = TensorDataset(
+        testsData_a,
+        testsData_u,
+        dfTolist(testsTime_a),
+        dfTolist(testsTime_u),
+    )
+    validDataset = TensorDataset(
+        validData_a,
+        validData_u,
+        dfTolist(validTime_a),
+        dfTolist(validTime_u),
+    )
     # Create the data loader
 
     # TODO: Fix the batch size for the tests and valid loaders

@@ -154,7 +154,7 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 20
+epochs = 2
 lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5

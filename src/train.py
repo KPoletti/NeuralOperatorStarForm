@@ -103,13 +103,14 @@ class Trainer(object):
         for batch_idx, sample in enumerate(train_loader):
             data = sample["x"].to(self.device)
             target = sample["y"].to(self.device)
-
             output = self.model(data)
 
             if epoch == 0 and batch_idx == 0:
                 logger.debug(f"Batch Data Shape: {data.shape}")
                 logger.debug(f"Batch Target Shape: {target.shape}")
                 logger.debug(f"Output Data Shape: {output.shape}")
+                logger.debug(f"Input Meta Data: {sample['meta_x']}")
+                logger.debug(f"Output Meta Data: {sample['meta_y']}")
 
             if batch_idx == rand_point and epoch == 3:
                 random_plot(
@@ -322,15 +323,18 @@ class Trainer(object):
         test_loss = 0
         re_loss = 0
         rand_point = np.random.randint(0, len(data_loader))
-
+        mass = "null"
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
+                meta_data = sample["meta_x"]
+                cur_mass = meta_data["mass"][0]
                 # apply the input encoder
                 output = self.model(data)
                 # apply the model to previous output
-                if batchidx == 0:
+                if batchidx == 0 or cur_mass != mass:
                     reData = output.clone()
+                    mass = cur_mass
                 elif batchidx > 0:
                     if input_encoder is not None:
                         reData = input_encoder.encode(reData)
