@@ -35,7 +35,7 @@ if data_name == "NS-Caltech":
 # For Grav Collapse
 ##############################################
 elif data_name == "GravColl":
-    S = 800
+    S = 200
     T = 5
     T_in = 5
     DATA_PATH = "../dataToSend/TrainingData/Simulations/"
@@ -62,15 +62,15 @@ elif data_name == "GravColl":
 
     TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled.pt"
     TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.h5"
-    log = False
+    log = True
     N = 14
     if mass == "ALL":
         N = 902
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
-    modes = 16  # star Form 20
-    width = 32  # star Form 100
+    modes = 10  # star Form 20
+    width = 24  # star Form 100
     poolKernel = 0  # set to 0 to disable pooling
     poolStride = 0  # set to 0 to disable pooling
 
@@ -137,7 +137,7 @@ if poolKernel > 0:
 ##############################################
 NN = "CNL2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
 
-encoder = True
+encoder = False
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -153,11 +153,11 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 3
+epochs = 100
 lr = 0.0001
 scheduler_step = 50
 scheduler_gamma = 0.5
-batch_size = 3
+batch_size = 10
 optimizer = "Adam"
 loss_name = "LpLoss"
 if NN == "FNO3d" or NN == "CNL2d":

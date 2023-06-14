@@ -26,19 +26,9 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
-N = int((param.split[0] + param.split[1]) * param.N)
-# create output folder
-path = (
-    f"SF_{param.NN}_{param.data_name}_ep{param.epochs}"
-    f"_m{param.modes}_w{param.width}_S{param.S}"
-    f"_E{param.encoder}"
-    f"_N{N}"
-)
 
 
 # define the network architecture
-
-
 def initializeNetwork(params: dataclass) -> nn.Module:
     """
     Initialize the model
@@ -132,6 +122,7 @@ def random_plot(
     idx1 = np.random.randint(0, input.shape[0])
     idx2 = np.random.randint(0, input.shape[1])
     # check the shape of the input
+    d = "1 D problem"
     if len(input.shape) > 4:
         d = np.random.randint(0, input.shape[-1])
         input = input[..., d]
@@ -142,18 +133,18 @@ def random_plot(
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
     # plot the input
     im0 = axs[0].imshow(input[idx1, idx2, :, :].cpu().detach().numpy())
-    axs[0].set_title(f"Input: {idx1}, {idx2}")
+    axs[0].set_title(f"Input: Timestep {idx1}, {idx2}. Dim {d}")
     fig.colorbar(im0, ax=axs[0])
     # plot the output
     im1 = axs[1].imshow(output[idx1, idx2, :, :].cpu().detach().numpy())
-    axs[1].set_title(f"Output: {idx1}, {idx2}")
+    axs[1].set_title(f"Output: Timestep {idx1}, {idx2}. Dim {d}")
     fig.colorbar(im1, ax=axs[1])
     # plot the target
     im2 = axs[2].imshow(target[idx1, idx2, :, :].cpu().detach().numpy())
-    axs[2].set_title(f"Target: {idx1}, {idx2}")
+    axs[2].set_title(f"Target: Timestep {idx1}, {idx2}. Dim {d}")
     fig.colorbar(im2, ax=axs[2])
     # save the figure
-    plt.savefig(f"results/{path}/plots/random_plot_{savename}_id1{idx1}_id2{idx2}.png")
+    plt.savefig(f"{savename}_id1{idx1}_id2{idx2}.png")
 
 
 class Trainer(object):
@@ -172,6 +163,7 @@ class Trainer(object):
             gamma=params.scheduler_gamma,
         )
         self.loss = params.loss_fn
+        self.plot_path = f"results/{self.params.path}/plots"
 
     def dissipativeRegularizer(
         self, x: torch.Tensor, device: torch.device
@@ -211,8 +203,13 @@ class Trainer(object):
                 logger.debug(f"Batch Data Shape: {data.shape}")
                 logger.debug(f"Batch Target Shape: {target.shape}")
                 logger.debug(f"Output Data Shape: {output.shape}")
-            if batch_idx == rand_point and epoch == 33:
-                random_plot(data, output, target, savename="train")
+            if batch_idx == rand_point and epoch == 3:
+                random_plot(
+                    data,
+                    output,
+                    target,
+                    savename=f"{self.plot_path}/random_plot_train",
+                )
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -221,8 +218,13 @@ class Trainer(object):
                 # decode the output
                 output = output_encoder.decode(output)
 
-            if batch_idx == rand_point and epoch == 33:
-                random_plot(data, output, target, savename="train_decoded")
+            if batch_idx == rand_point and epoch == 3:
+                random_plot(
+                    data,
+                    output,
+                    target,
+                    savename=f"{self.plot_path}/random_plot_train_decoded",
+                )
             # compute the loss
             loss = self.loss(output.float(), target)
             if len(loss.shape) > 1:
@@ -308,7 +310,9 @@ class Trainer(object):
             wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
         try:
             if self.params.saveNeuralNetwork:
-                torch.save(self.model, f"results/{path}/models/{self.params.NN}")
+                torch.save(
+                    self.model, f"results/{self.params.path}/models/{self.params.NN}"
+                )
         except:
             logger.error("Failed to save model")
 
@@ -423,7 +427,7 @@ class Trainer(object):
         im = wandb.Image(fig)
         wandb.log({"RMSE": im})
         if len(savename) > 0:
-            fig.savefig(f"results/{path}/plots/{savename}_RMSE.png")
+            fig.savefig(f"{self.plot_path}/{savename}_RMSE.png")
         plt.close(fig)
 
         ############ RMSE Vs Density ############
@@ -447,7 +451,7 @@ class Trainer(object):
         # im = wandb.Image(fig)
         # wandb.log({"RMSE vs Density": im})
         # if len(savename) > 0:
-        #     fig.savefig(f"results/{path}/plots/{savename}_RMSE_vs_density.png")
+        #     fig.savefig(f"results/{self.params.path}/plots/{savename}_RMSE_vs_density.png")
         # plt.close(fig)
 
     def evaluate(
@@ -497,8 +501,18 @@ class Trainer(object):
                     reData = self.model(reData)
 
                 if batchidx == rand_point:
-                    random_plot(data, output, target, "valid")
-                    random_plot(data, reData, target, "rolling")
+                    random_plot(
+                        data,
+                        output,
+                        target,
+                        f"{self.plot_path}/random_plot_valid",
+                    )
+                    random_plot(
+                        data,
+                        reData,
+                        target,
+                        f"{self.plot_path}/random_plot_rolling",
+                    )
 
                 # decode  if there is an output encoder
                 if output_encoder is not None:
@@ -514,8 +528,18 @@ class Trainer(object):
                     data = input_encoder.decode(data)
 
                 if batchidx == rand_point + 1:
-                    random_plot(data, output, target, savename="valid_decoded")
-                    random_plot(data, reData, target, "rolling_decoded")
+                    random_plot(
+                        data,
+                        output,
+                        target,
+                        savename=f"{self.plot_path}/random_plot_valid_decoded",
+                    )
+                    random_plot(
+                        data,
+                        reData,
+                        target,
+                        f"{self.plot_path}/random_plot_rolling_decoded",
+                    )
 
                 # assign the values to the tensors
                 pred[batchidx] = output
@@ -530,11 +554,15 @@ class Trainer(object):
             numTrained = self.params.N * self.params.split[0]
             print(f"Final Loss for {int(numTrained)}: {test_loss} ")
             wandb.log({"Valid Loss": test_loss, "Reapply Loss": re_loss})
-        print(f"Saving data as {os.getcwd()} results/{path}/data/{savename}.mat")
+        print(
+            f"Saving data as {os.getcwd()} results/{self.params.path}/data/{savename}.mat"
+        )
         if len(savename) > 0:
-            print(f"Saving data as {os.getcwd()} results/{path}/data/{savename}.mat")
+            print(
+                f"Saving data as {os.getcwd()} results/{self.params.path}/data/{savename}.mat"
+            )
             scipy.io.savemat(
-                f"results/{path}/data/{savename}.mat",
+                f"results/{self.params.path}/data/{savename}.mat",
                 mdict={
                     "input": input.cpu().numpy(),
                     "pred": pred.cpu().numpy(),
