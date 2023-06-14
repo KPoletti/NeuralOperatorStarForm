@@ -61,9 +61,9 @@ def set_Loss(params):
     from neuralop.training.losses import LpLoss, H1Loss
 
     if params.loss_name == "LpLoss":
-        return LpLoss(d=2, p=2, reduce_dims=(0, 1))
+        return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
-        return H1Loss(d=2, reduce_dims=(0, 1))
+        return H1Loss(d=params.d, reduce_dims=(0, 1))
     else:
         raise ValueError(f"Loss {params.loss_name} not implemented")
 
@@ -85,6 +85,9 @@ def main(config=None):
             f"_E{params.encoder}"
             f"_N{N}"
         )
+
+        # add the path to params
+        params.path = path
         # define the loss function
         params.loss_fn = set_Loss(params)
         # check if path exists

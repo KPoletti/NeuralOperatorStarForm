@@ -69,6 +69,7 @@ def main(params):
         f"_E{params.encoder}"
         f"_N{N}"
     )
+    params.path = path
     # check if path exists
     if not os.path.exists(f"results/{path}"):
         os.makedirs(f"results/{path}")
