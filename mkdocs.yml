@@ -1,0 +1,71 @@
+site_name: Neural Operators for Star Formation     
+repo_url: https://github.com/KPoletti/NeuralOperatorStarForm.git
+repo_name: NeuralOperatorStarForm
+site_description: Neural Operators for Star Formation
+
+markdown_extensions:
+  - attr_list
+  - tables
+  - admonition
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      use_pygments: true
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.arithmatex:
+      generic: true
+  - toc:
+      permalink: "¤"
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/git-alt 
+    name: git-alt
+  palette: 
+    #Palette toggle for light mode
+    - scheme: custom-light
+      toggle:
+        icon: material/brightness-7 
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - scheme: custom-slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+extra_css:
+  - stylesheets/extra.css
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      enable_inventory: true
+      handlers:
+        python:
+          import:
+            - https://docs.python.org/3/objects.inv
+            - https://pytorch.org/docs/stable/objects.inv
+nav:
+  - Home: "index.md"
+  - About: "about.md"
+  - Getting started: "getting_started.md"
+  - Input file: "input_file.md"
+  - Datasets: "dataset.md"
+  - References: "references.md"
