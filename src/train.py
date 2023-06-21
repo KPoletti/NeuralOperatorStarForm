@@ -11,45 +11,28 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import logging
-
+from src.plottingUtils import create_animation, random_plot
 
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
-def random_plot(
-    input: torch.tensor, output: torch.tensor, target: torch.tensor, savename: str
-):
-    """Plots a time point of the input, output, and target"""
-    # select random first and second dimension
-    idx1 = np.random.randint(0, input.shape[0])
-    idx2 = np.random.randint(0, input.shape[1])
-    # check the shape of the input
-    d = "1 D problem"
-    if len(input.shape) > 4:
-        d = np.random.randint(0, input.shape[-1])
-        d = 0
-        input = input[..., d]
-        output = output[..., d]
-        target = target[..., d]
-
-    # create 1 by 3 subplots
-    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
-    # plot the input
-    im0 = axs[0].imshow(input[idx1, idx2, :, :].cpu().detach().numpy())
-    axs[0].set_title(f"Input: Timestep {idx1}, {idx2}. Dim {d}")
-    fig.colorbar(im0, ax=axs[0])
-    # plot the output
-    im1 = axs[1].imshow(output[idx1, idx2, :, :].cpu().detach().numpy())
-    axs[1].set_title(f"Output: Timestep {idx1}, {idx2}. Dim {d}")
-    fig.colorbar(im1, ax=axs[1])
-    # plot the target
-    im2 = axs[2].imshow(target[idx1, idx2, :, :].cpu().detach().numpy())
-    axs[2].set_title(f"Target: Timestep {idx1}, {idx2}. Dim {d}")
-    fig.colorbar(im2, ax=axs[2])
-    # save the figure
-    plt.savefig(f"{savename}_id1{idx1}_id2{idx2}.png")
+def data_visible_check(data: torch.tensor, meta: dict, save: str, idx):
+    """
+    Creates a mp4 of a random batch of the data to check if the data is visible
+    Inputs:
+        data: pytorch tensor of shape (batch, time, x, y, variable
+        meta: dictionary of metadata
+        save: directory to save the plots
+    """
+    # reduce the data to just that batch
+    data = data[idx, ...]
+    # reduce the meta data to just that batch
+    mass = meta["mass"][idx]
+    time = torch.tensor([t[idx] for t in meta["time"]])
+    # create an animation of the density and velocity data
+    create_animation(data, time, save, mass, fps=1)
 
 
 class Trainer(object):
@@ -112,7 +95,12 @@ class Trainer(object):
                 logger.debug(f"Input Meta Data: {sample['meta_x']}")
                 logger.debug(f"Output Meta Data: {sample['meta_y']}")
 
-            if batch_idx == rand_point and epoch == 3:
+            if batch_idx == rand_point and epoch == 53:
+                savename = f"{self.plot_path}/Train_"
+                idx = np.random.randint(0, data.shape[0] - 1)
+                data_visible_check(data, sample["meta_x"], f"{savename}input", idx)
+                data_visible_check(target, sample["meta_y"], f"{savename}target", idx)
+                data_visible_check(output, sample["meta_y"], f"{savename}output", idx)
                 random_plot(
                     data,
                     output,
@@ -127,12 +115,16 @@ class Trainer(object):
                 # decode the output
                 output = output_encoder.decode(output)
 
-            if batch_idx == rand_point and epoch == 3:
+            if batch_idx == rand_point and epoch == 53:
+                savename = f"{self.plot_path}/Train_decoded_"
+                data_visible_check(data, sample["meta_x"], f"{savename}input", idx)
+                data_visible_check(target, sample["meta_y"], f"{savename}target", idx)
+                data_visible_check(output, sample["meta_y"], f"{savename}output", idx)
                 random_plot(
                     data,
                     output,
                     target,
-                    f"{self.plot_path}/random_plot_train_decoded",
+                    f"{self.plot_path}/Train_decoded",
                 )
             # compute the loss
             loss = self.loss(output.float(), target)
@@ -176,6 +168,9 @@ class Trainer(object):
             test_loss_fn = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         else:
             test_loss_fn = self.loss
+
+        logger.debug(f"len(test_loader.dataset) = {len(test_loader.dataset)}")
+        logger.debug(f"len(train_loader.dataset) = {len(train_loader.dataset)}")
         # start training
         for epoch in range(self.params.epochs):
             epoch_timer = time.time()
@@ -187,7 +182,8 @@ class Trainer(object):
             self.model.eval()
             test_loss = 0
             with torch.no_grad():
-                for sample in test_loader:
+                rand_point = np.random.randint(0, len(test_loader))
+                for batch_idx, sample in enumerate(test_loader):
                     data = sample["x"].to(self.device)
                     target = sample["y"].to(self.device)
 
@@ -196,7 +192,19 @@ class Trainer(object):
                     # decode  if there is an output encoder
                     if output_encoder is not None:
                         output = output_encoder.decode(output)
-                        # do not decode the test target because the test data is not encoded
+                        # do not decode the test target because the test data is not encode
+                    if batch_idx == rand_point and epoch == 53:
+                        idx = np.random.randint(0, data.shape[0] - 1)
+                        savename = f"{self.plot_path}/Test_decoded_"
+                        data_visible_check(
+                            data, sample["meta_x"], f"{savename}input", idx
+                        )
+                        data_visible_check(
+                            target, sample["meta_y"], f"{savename}target", idx
+                        )
+                        data_visible_check(
+                            output, sample["meta_y"], f"{savename}output", idx
+                        )
                     test_loss += test_loss_fn(output, target).item()
 
             test_loss /= len(test_loader.dataset)
@@ -334,14 +342,28 @@ class Trainer(object):
                 # apply the model to previous output
                 if batchidx == 0 or cur_mass != mass:
                     reData = output.clone()
+                    logging.info(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
                 elif batchidx > 0:
                     if input_encoder is not None:
+                        logger.debug("Encoding reData")
                         reData = input_encoder.encode(reData)
                     # apply the model to previous output
                     reData = self.model(reData)
 
                 if batchidx == rand_point:
+                    save_plot = f"{self.plot_path}/Valid_"
+                    idx = 0
+                    data_visible_check(data, sample["meta_x"], f"{save_plot}input", idx)
+                    data_visible_check(
+                        target, sample["meta_y"], f"{save_plot}target", idx
+                    )
+                    data_visible_check(
+                        output, sample["meta_y"], f"{save_plot}output", idx
+                    )
+                    data_visible_check(
+                        reData, sample["meta_y"], f"{save_plot}rolling", idx
+                    )
                     random_plot(
                         data,
                         output,
@@ -357,6 +379,7 @@ class Trainer(object):
 
                 # decode  if there is an output encoder
                 if output_encoder is not None:
+                    logger.debug("Decoding data")
                     # decode the output
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
@@ -368,7 +391,19 @@ class Trainer(object):
                 if input_encoder is not None:
                     data = input_encoder.decode(data)
 
-                if batchidx == rand_point + 1:
+                if batchidx == rand_point:
+                    save_plot = f"{self.plot_path}/Valid_decoded_"
+
+                    data_visible_check(data, sample["meta_x"], f"{save_plot}input", idx)
+                    data_visible_check(
+                        target, sample["meta_y"], f"{save_plot}target", idx
+                    )
+                    data_visible_check(
+                        output, sample["meta_y"], f"{save_plot}output", idx
+                    )
+                    data_visible_check(
+                        reData, sample["meta_y"], f"{save_plot}rolling", idx
+                    )
                     random_plot(
                         data,
                         output,
