@@ -1,4 +1,4 @@
-name: NO4SF
+name: docs
 on:
   push:
     branches:
