@@ -49,6 +49,8 @@ def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
     Output:
         data: torch.tensor data after pooling
     """
+    if params.poolKernel <= 0:
+        return data
     logger.debug(f"Pooling data with kernel size {params.poolKernel}")
     # permute the data to pool across density
     if len(data.shape) == 4:
@@ -95,6 +97,36 @@ class Log10Normalizer:
         return self
 
 
+def reduce_to_density(data: torch.tensor, params: dataclass) -> torch.tensor:
+    """
+    Reduces the data to only the density
+    Input:
+        data: torch.tensor data to reduce
+        params: input parameters from the input file
+    Output:
+        data: torch.tensor data after reduction
+    """
+    if "GravColl" in params.data_name and "FNO2d" in params.NN:
+        return data[..., 0, :]
+    else:
+        return data
+
+
+def logData(data: torch.tensor, params: dataclass) -> torch.tensor:
+    """
+    Log the data
+    Input:
+        data: torch.tensor data to log
+        params: input parameters from the input file
+    Output:
+        data: torch.tensor data after logging
+    """
+    if params.log:
+        log_encoder = Log10Normalizer(data)
+        data = log_encoder.encode(data)
+    return data
+
+
 def loadData(params: dataclass, isDensity: bool) -> tuple:
     """
     Load data from the path specified in the input file
@@ -127,11 +159,12 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
         filename = params.TRAIN_PATH
         fullData = torch.load(filename)
         fullData = fullData.float()
-        if params.log:
-            log_encoder = Log10Normalizer(fullData)
-            fullData = log_encoder.encode(fullData)
-        if params.poolKernel > 0:
-            fullData = averagePooling(fullData, params)
+        # reduce to density
+        fullData = reduce_to_density(fullData, params)
+        # log the data
+        fullData = logData(fullData, params)
+        # average pool the data
+        fullData = averagePooling(fullData, params)
         logger.debug(f"Full Data Shape: {fullData.shape}")
     else:
         filename = params.TIME_PATH
