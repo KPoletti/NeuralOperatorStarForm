@@ -25,5 +25,6 @@ jobs:
           mkdocs-material \
           mkdocs-awesome-pages-plugin \
           mkdocstrings \
+          'mkdocstrings[crystal,python]' \
       - run: mkdocs gh-deploy --force
       
