@@ -64,7 +64,7 @@ elif data_name == "GravColl":
     N = 14
     if mass == "ALL":
         N = 902
-        N = 150
+        N = 100
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
@@ -133,7 +133,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "CNL2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
+NN = "FNO3d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")

@@ -256,10 +256,10 @@ class multiVarible_normalizer:
 
 
 def permute_FNO3d(
-    data: torch.tensor, params: dataclass, size: int, gridsize: int
+    data: torch.tensor, params: dataclass, size: int, gridsize: int, dim: int = 1
 ) -> torch.tensor:
-    data = data.reshape(size, gridsize, gridsize, 1, params.T_in)
-    data = data.repeat([1, 1, 1, params.T, 1])
+    # data = data.reshape(size, gridsize, gridsize, dim, params.T_in)
+    # data = data.repeat([1, 1, 1, params.T, 1])
     data = data.permute(0, 4, 3, 1, 2)
     return data
 
@@ -286,7 +286,8 @@ def permute(data, params, size, gridsize) -> torch.tensor:
         data: torch.tensor permuted data
     """
     if "FNO3d" in params.NN:
-        return permute_FNO3d(data, params, size, gridsize)
+        return permute_FNO3d(data, params, size, gridsize, dim=3)
+        # return permute_CNL2d(data)
 
     elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
         return permute_FNO2d(data, params, size, gridsize)
