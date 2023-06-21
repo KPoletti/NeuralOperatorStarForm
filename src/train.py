@@ -27,8 +27,8 @@ def data_visible_check(data: torch.tensor, meta: dict, save: str, idx):
         save: directory to save the plots
     """
     # check if FNO3d is in save
-    # if "FNO3d" in save:
-    #     data = data.permute(0, 1, 3, 4, 2)
+    if "FNO3d" in save:
+        data = data.permute(0, 1, 3, 4, 2)
     # reduce the data to just that batch
     data = data[idx, ...]
 

@@ -59,12 +59,11 @@ elif data_name == "GravColl":
     # TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.pt"
     # TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.h5"
 
-    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled.pt"
+    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled_normalized.pt"
     TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.h5"
     N = 14
     if mass == "ALL":
         N = 902
-        N = 100
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5

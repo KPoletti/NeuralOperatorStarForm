@@ -68,9 +68,9 @@ def main():
         "modes": {"distribution": "int_uniform", "min": 4, "max": 48},
         "width": {
             "distribution": "q_log_uniform_values",
-            "q": 4,
+            "q": 2,
             "min": 12,
-            "max": 168,
+            "max": 128,
         },
         "encoder": {"values": [True, False]},
         "lr": {"distribution": "log_uniform_values", "min": 1e-8, "max": 1e-1},
