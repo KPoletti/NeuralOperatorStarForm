@@ -97,7 +97,7 @@ def main(params):
     ################################################################
     logging.info("........Loading data........")
     dataTime = time.time()
-    trainTime, testsTime, validTime = loadData(params, isDensity=False)
+    trainTime, testsTime, validTime = loadData(params, isData=False)
     (
         trainLoader,
         testLoader,

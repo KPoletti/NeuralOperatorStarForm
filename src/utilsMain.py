@@ -127,15 +127,15 @@ def logData(data: torch.tensor, params: dataclass) -> torch.tensor:
     return data
 
 
-def loadData(params: dataclass, isDensity: bool) -> tuple:
+def loadData(params: dataclass, isData: bool) -> tuple:
     """
     Load data from the path specified in the input file
     Input:
         params: input parameters from the input file
-        isDensity: if True load in the density data,
+        isData: if True load in the density data,
                if False load in the information about each time step
     Output:
-        isDensity = True:
+        isData = True:
 
             trainData: torch.tensor training data,
             testingData: torch.tensor testing data,
@@ -144,7 +144,7 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
                 N is the number of timesteps
                 S is the size of the image
                 2 corresponds to the density at time t and t+1
-        isDensity = False:
+        isData = False:
             trainData: pd.DataFrame training data,
             testingData: pd.DataFrame testing data,
             validData: pd.DataFrame validation data,
@@ -155,7 +155,7 @@ def loadData(params: dataclass, isDensity: bool) -> tuple:
                 "filename" name of the file corresponding to that data,
                 "number" the number of timesteps,
     """
-    if isDensity:
+    if isData:
         filename = params.TRAIN_PATH
         fullData = torch.load(filename)
         fullData = fullData.float()
@@ -372,8 +372,8 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     wandb.config["Total data"] = trainSize + testsSize + validSize
 
     # load data
-    trainData, testsData, validData = loadData(params, isDensity=True)
-    trainTime, testsTime, validTime = loadData(params, isDensity=False)
+    trainData, testsData, validData = loadData(params, isData=True)
+    trainTime, testsTime, validTime = loadData(params, isData=False)
     logger.debug(f"trainData shape: {trainData.shape}")
 
     # divide data into time step and timestep to predict
@@ -502,8 +502,8 @@ def deprecatedPrepareDataForTraining(params: dataclass, S: int) -> tuple:
     wandb.config["Total data"] = trainSize + testsSize + validSize
 
     # load data
-    trainData, testsData, validData = loadData(params, isDensity=True)
-    trainTime, testsTime, validTime = loadData(params, isDensity=False)
+    trainData, testsData, validData = loadData(params, isData=True)
+    trainTime, testsTime, validTime = loadData(params, isData=False)
     logger.debug(f"trainData shape: {trainData.shape}")
     # divide data into time step and timestep to predict
 
