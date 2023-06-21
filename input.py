@@ -19,7 +19,6 @@ if data_name == "NS-Caltech":
     DATA_PATH = "../dataToSend/CaltechData/"
     TRAIN_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.pt"
     TIME_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.h5"
-    log = False
     S = 64
     N = 5000
     input_channels = 10
@@ -62,16 +61,15 @@ elif data_name == "GravColl":
 
     TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled.pt"
     TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.h5"
-    log = True
     N = 14
     if mass == "ALL":
         N = 902
-        N = 300
+        N = 150
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
-    modes = 12  # star Form 20
-    width = 12  # star Form 100
+    modes = 26  # star Form 20
+    width = 32  # star Form 100
     poolKernel = 0  # set to 0 to disable pooling
     poolStride = 0  # set to 0 to disable pooling
 
@@ -92,7 +90,6 @@ elif data_name == "StarForm":
 
     TRAIN_PATH = f"{DATA_PATH}density_mu{mu}_dN{dN}.pt"
     TIME_PATH = f"{DATA_PATH}time_mu{mu}_dN{dN}.h5"
-    log = True
     N = 874
     data_name = f"{data_name}_mu{mu}"
     input_channels = 1
@@ -110,8 +107,6 @@ elif data_name == "CATS":
     TRAIN_PATH = f"{DATA_PATH}CATS_full.pt"
     TIME_PATH = f"{DATA_PATH}../CaltechData/ns_V1e-3_N5000_T50.h5"
 
-    log = True
-
     S = 256
     T = 1
     T_in = 1
@@ -122,6 +117,8 @@ elif data_name == "CATS":
     width = 48
     N = 2970
 
+log = False
+encoder = False
 
 ##############################################
 # Data parameters
@@ -137,8 +134,6 @@ if poolKernel > 0:
 # Neural network parameters
 ##############################################
 NN = "CNL2d"  # "FNO2d", "MNO", "FNO" or "CNL2d"
-
-encoder = True
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -154,13 +149,13 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 2
-lr = 0.0001
+epochs = 100
+lr = 0.00042
 scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
-loss_name = "LpLoss"
+loss_name = "H1Loss"
 if NN == "FNO3d" or NN == "CNL2d":
     d = 3
 else:

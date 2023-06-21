@@ -7,6 +7,7 @@ from src.utilsMain import *
 import torch
 import numpy as np
 import src.networkUtils as myNet
+import src.train as myTrain
 import argparse
 import logging
 import time
@@ -90,6 +91,10 @@ def main(config=None):
         params.path = path
         # define the loss function
         params.loss_fn = set_Loss(params)
+        # Print the parameters
+        paramsJSON = convertParamsToJSON(params)
+        print(json.dumps(paramsJSON, indent=4, sort_keys=True))
+
         # check if path exists
         if not os.path.exists(f"results/{path}"):
             os.makedirs(f"results/{path}")
@@ -148,7 +153,7 @@ def main(config=None):
         ################################################################
         logger.info("........Training neural network........")
         # train neural network
-        Trainer = myNet.Trainer(
+        Trainer = myTrain.Trainer(
             model=model,
             params=params,
             device=device,

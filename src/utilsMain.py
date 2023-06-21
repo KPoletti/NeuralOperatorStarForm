@@ -194,7 +194,7 @@ def dfTolist(df: pd.DataFrame) -> list:
     """
     # convert the dataframe to a list of tensors
 
-    data = []
+    data = {}
     # find keys of the dataframe
     keys = df.keys()
     for i in range(len(df)):
@@ -205,7 +205,7 @@ def dfTolist(df: pd.DataFrame) -> list:
         info["mass"] = snap.split("M")[-1].split("_")[0]
         info["time"] = [df.iloc[i][key[0]]["time"] for key in keys[::2]]
         # append info to the list
-        data.append(info)
+        data[i] = info
     return data
 
 
