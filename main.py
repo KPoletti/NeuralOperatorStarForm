@@ -154,6 +154,7 @@ def main(params):
         savename="ValidationData",
     )
     print(f"Output folder for {path}")
+    # run.finish()
 
 
 if __name__ == "__main__":
