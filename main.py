@@ -97,7 +97,7 @@ def main(params):
     ################################################################
     logging.info("........Loading data........")
     dataTime = time.time()
-    trainTime, testsTime, validTime = loadData(params, isData=False)
+    # trainTime, testsTime, validTime = loadData(params, isData=False)
     (
         trainLoader,
         testLoader,
@@ -144,7 +144,6 @@ def main(params):
     # test neural network
     Trainer.evaluate(
         validLoader,
-        validTime,
         output_encoder=output_encoder,
         input_encoder=input_encoder,
         savename="ValidationData",

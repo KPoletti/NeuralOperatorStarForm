@@ -140,20 +140,10 @@ def loadData(params: dataclass, isData: bool) -> tuple:
             trainData: torch.tensor training data,
             testingData: torch.tensor testing data,
             validData: torch.tensor validation data
-                Each tensor has dimensions (N, S, S, 2)
-                N is the number of timesteps
-                S is the size of the image
-                2 corresponds to the density at time t and t+1
         isData = False:
             trainData: pd.DataFrame training data,
             testingData: pd.DataFrame testing data,
             validData: pd.DataFrame validation data,
-                each dataframe is split into df["t"] and df["t+1"]
-                the dataframe can be indexed by dimension and time step
-                Each df["t"] is a dataframe with the following columns:
-                "time" time in Myr,
-                "filename" name of the file corresponding to that data,
-                "number" the number of timesteps,
     """
     if isData:
         filename = params.TRAIN_PATH
@@ -171,12 +161,31 @@ def loadData(params: dataclass, isData: bool) -> tuple:
         # load in data about each time step
         fullData = pd.read_hdf(filename, "table")
     # find the indices to split the data
+    # trainData, testData, validData = train_test_valid_split(params, fullData)
+    # del fullData
+    return fullData
+
+
+def train_test_valid_split(params: dataclass, data: torch.tensor) -> tuple:
+    """
+    Break the data into training, testing, and validation sets
+    Input:
+        params: input parameters from the input file
+        data: torch.tensor data to split
+    Output:
+        trainData: torch.tensor training data,
+        testingData: torch.tensor testing data,
+        validData: torch.tensor validation data
+            Each tensor has dimensions (N, S, S, 2)
+            N is the number of timesteps
+            S is the size of the image
+            2 corresponds to the density at time t and t+1
+    """
     trainSize, testSize, validSize = dataSplit(params)
     # load data
-    trainData = fullData[:trainSize]
-    testData = fullData[trainSize : trainSize + testSize]
-    validData = fullData[-validSize:]
-    del fullData
+    trainData = data[:trainSize]
+    testData = data[trainSize : trainSize + testSize]
+    validData = data[-validSize:]
     return trainData, testData, validData
 
 
@@ -343,12 +352,12 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
 
 def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     """
-    Loads in the data,
-    Splits it into training, testing, and validation subsets
-    Splits the data into the time step to predict and the time step to use
-    Normalizes the data
-    Reformats the data into the correct shape for the neural network
-    Loads the data into pytorch dataLoaders
+    1. Loads in the data,
+    2. Splits it into training, testing, and validation subsets
+    3. Splits the data into the time step to predict and the time step to use
+    4. Normalizes the data
+    5. Reformats the data into the correct shape for the neural network
+    6. Loads the data into pytorch dataLoaders
     Input:
         params: input parameters from the input file
         S: int size of the image
@@ -366,40 +375,35 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     logger.debug(f"Train size: {trainSize}")
     logger.debug(f"Test size: {testsSize}")
     logger.debug(f"Valid size: {validSize}")
+
     wandb.config["Train data"] = trainSize
     wandb.config["Test data"] = testsSize
     wandb.config["Valid data"] = validSize
     wandb.config["Total data"] = trainSize + testsSize + validSize
 
     # load data
-    trainData, testsData, validData = loadData(params, isData=True)
-    trainTime, testsTime, validTime = loadData(params, isData=False)
-    logger.debug(f"trainData shape: {trainData.shape}")
-
+    fullData = loadData(params, isData=True)
+    timeData = loadData(params, isData=False)
     # divide data into time step and timestep to predict
-    trainData_a, trainData_u, trainTime_a, trainTime_u = timestepSplit(
-        trainData, trainTime, params
+    fullData_a, fullData_u, timeData_a, timeData_u = timestepSplit(
+        fullData, timeData, params
     )
-    testsData_a, testsData_u, testsTime_a, testsTime_u = timestepSplit(
-        testsData, testsTime, params
-    )
-    validData_a, validData_u, validTime_a, validTime_u = timestepSplit(
-        validData, validTime, params
-    )
+    # permute data to correct shape
+    fullData_a = permute(fullData_a, params, fullData_a.shape[0], S)
+    fullData_u = permute(fullData_u, params, fullData_u.shape[0], S)
+
+    # split data into training, testing, and validation subsets
+    trainData_a, testsData_a, validData_a = train_test_valid_split(params, fullData_a)
+    trainData_u, testsData_u, validData_u = train_test_valid_split(params, fullData_u)
+
+    trainTime_a, testsTime_a, validTime_a = train_test_valid_split(params, timeData_a)
+    trainTime_u, testsTime_u, validTime_u = train_test_valid_split(params, timeData_u)
+
     # TODO: Figure out how to include the timesteps in the data
     if params.level == "DEBUG":
         print(f"Train Data Shape: {trainData_a.shape}")
         print(f"Test Data Shape: {testsData_a.shape}")
         print(f"Valid Data Shape: {validData_a.shape}")
-
-    # permute data
-    trainData_a = permute(trainData_a, params, trainSize, S)
-    testsData_a = permute(testsData_a, params, testsSize, S)
-    validData_a = permute(validData_a, params, validSize, S)
-
-    trainData_u = permute(trainData_u, params, trainSize, S)
-    testsData_u = permute(testsData_u, params, testsSize, S)
-    validData_u = permute(validData_u, params, validSize, S)
 
     if params.encoder:
         # initialize the encoder
@@ -453,7 +457,6 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         dfTolist(validTime_u),
     )
     # Create the data loader
-
     # TODO: Fix the batch size for the tests and valid loaders
     # On gravcoll, for (15, 10, 200, 200 ,3) the test loss will grow if validSize =0
     trainLoader = torch.utils.data.DataLoader(

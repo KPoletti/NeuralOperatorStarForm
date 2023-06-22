@@ -264,7 +264,6 @@ class Trainer(object):
             ind = np.random.randint(0, truth.shape[-2] - 1)
             t_ind = np.random.randint(0, truth.shape[-1] - 1)
             # reduce the data to only that index
-            # prediction = prediction[:, :, :, ind, :].permute(0, 3, 1, 2).flatten(0, 1)
             prediction = prediction[:, :, :, ind, t_ind]
             truth = truth[:, :, :, ind, t_ind]
             input = input[:, :, :, ind, t_ind]
@@ -282,18 +281,10 @@ class Trainer(object):
         # normalize RMSE
         relativeRMSE /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
 
-        try:
-            time = timeData["t+0"]["time"].values
-        except NameError:
-            time = np.arange(0, prediction.shape[0])
-            logger.info("Failed time data")
-        except KeyError:
-            time = timeData["t"]["time"].values
-
         # plot RMSE for each time step
         fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-        ax.plot(time, rmse, ".", label="Neural RMSE")
-        ax.plot(time, relativeRMSE, ".", label="RMSE between time steps")
+        ax.plot(timeData, rmse, ".", label="Neural RMSE")
+        ax.plot(timeData, relativeRMSE, ".", label="RMSE between time steps")
         ax.set_xlabel("Time (Myr)")
         ax.set_ylabel("Normalized  RMSE")
         ax.set_title(f"RMSE Over Time for index {ind}, t_0 {t_ind}")
@@ -307,7 +298,6 @@ class Trainer(object):
     def evaluate(
         self,
         data_loader: torch.utils.data.DataLoader,
-        timeData: pd.DataFrame,
         input_encoder=None,
         output_encoder=None,
         savename: str = "",
@@ -325,6 +315,7 @@ class Trainer(object):
         num_samples = len(data_loader.dataset)
         for batchidx, sample in enumerate(data_loader):
             data, target = sample["x"].to(self.device), sample["y"].to(self.device)
+            lentime = len(sample["meta_x"]["time"])
             break
 
         size = [num_samples] + [d for d in data.shape if d != 1]
@@ -336,11 +327,13 @@ class Trainer(object):
         re_loss = 0
         rand_point = np.random.randint(0, len(data_loader))
         mass = "null"
+        timeData = torch.zeros(num_samples, lentime)
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
                 meta_data = sample["meta_x"]
                 cur_mass = meta_data["mass"][0]
+                timeData[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
                 # apply the input encoder
                 output = self.model(data)
                 # apply the model to previous output
@@ -437,6 +430,9 @@ class Trainer(object):
         print(
             f"Saving data as {os.getcwd()} results/{self.params.path}/data/{savename}.mat"
         )
+        # flatten the time for plotting
+        timeData = timeData.flatten()
+
         if len(savename) > 0:
             print(
                 f"Saving data as {os.getcwd()} results/{self.params.path}/data/{savename}.mat"

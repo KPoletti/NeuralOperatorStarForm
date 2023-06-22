@@ -8,6 +8,12 @@ import math
 
 data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
 
+log = False  # Option to take the log of the data
+encoder = False  # Option to use the encoder
+loss_name = "H1Loss"  # LpLoss, H1Loss
+level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+saveNeuralNetwork = False  # Option to save the neural network
+doPlot = True  # Option to create plots
 
 # Pooling parameters
 poolKernel = 4  # set to 0 to disable pooling
@@ -39,19 +45,6 @@ elif data_name == "GravColl":
     T_in = 5
     DATA_PATH = "../dataToSend/TrainingData/Simulations/"
     dN = 10
-    # two options for mass: "_M1.2" or "_M1"
-    # mass = "ALL"
-    # extras = ""
-    # if mass == "_M1.2":
-    #     dt = 0.019
-    # elif mass == "_M1":
-    #     dt = 0.02
-    # elif mass == "1.2" or mass == "ALL":
-    #     dt = 0.0186
-    #     extras = "_multiData"
-    # else:
-    #     dt = 0.02
-    # sub = 1
     # Grav_M1.00_dN10_dt0.0204_multiData
     mass = "ALL"
     # dt = 0.0204
@@ -59,7 +52,7 @@ elif data_name == "GravColl":
     # TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.pt"
     # TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.h5"
 
-    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled_normalized.pt"
+    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled.pt"
     TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.h5"
     N = 14
     if mass == "ALL":
@@ -75,8 +68,6 @@ elif data_name == "GravColl":
 ##############################################
 # For MHD Star Formation Data
 ##############################################
-
-
 elif data_name == "StarForm":
     S = 800
     T = 1
@@ -116,8 +107,6 @@ elif data_name == "CATS":
     width = 48
     N = 2970
 
-log = False
-encoder = False
 
 ##############################################
 # Data parameters
@@ -148,13 +137,12 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 100
+epochs = 200
 lr = 0.00042
 scheduler_step = 50
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
-loss_name = "H1Loss"
 if NN == "FNO3d" or NN == "CNL2d":
     d = 3
 else:
@@ -165,12 +153,5 @@ elif loss_name == "H1Loss":
     loss_fn = H1Loss(d=d, reduce_dims=(0, 1))
 
 
-level = "DEBUG"
 file = "output.log"
 log_interval = 100
-
-# Option to Save NN
-saveNeuralNetwork = False
-
-# Option to create plots
-doPlot = True
