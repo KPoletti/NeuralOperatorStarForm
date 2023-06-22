@@ -1,5 +1,6 @@
 <!-- headline -->
 # NeuralOperatorStarForm
+![docs](https://github.com/KPoletti/NeuralOperatorStarForm/actions/workflows/docs.yml/badge.svg?event=push)
 Train a fourier neural operator to simulate MHD turbulence in a star-forming molecular cloud. Here is a link to the [docs](https://kpoletti.github.io/NeuralOperatorStarForm/)
 
 Currently under development. Software is configured to be used with four datasets:
