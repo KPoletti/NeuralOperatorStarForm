@@ -54,21 +54,26 @@ def convertParamsToJSON(params):
 
 
 def main(params):
+    ################################################################
+    # Wandb Setup
+    ################################################################
     with open("private/wandb_api_key.txt") as f:
         wandb_api_key = f.readlines()[0]
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
-
     run = wandb.init(project=params.data_name, config=paramsJSON)
+
+    ################################################################
+    # PATH
+    ################################################################
     # grab the ending of the density file with .pt
     N = int((params.split[0] + params.split[1]) * params.N)
     # create output folder
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}"
-        f"_E{params.encoder}"
-        f"_N{N}"
+        f"_E{params.encoder}_N{N}"
     )
     params.path = path
     # check if path exists
@@ -79,7 +84,9 @@ def main(params):
         os.makedirs(f"results/{path}/plots")
         os.makedirs(f"results/{path}/data")
 
+    ################################################################
     # SET UP LOGGING
+    ################################################################
     logging.basicConfig(
         level=os.environ.get("LOGLEVEL", params.level),
         format="%(asctime)s :: %(funcName)s :: %(levelname)s :: %(message)s",
@@ -89,7 +96,6 @@ def main(params):
         ],
     )
     logging.getLogger("wandb").setLevel(logging.WARNING)
-
     logging.info(f"Output folder for {path}")
 
     ################################################################
@@ -117,8 +123,6 @@ def main(params):
     # create neural network
     model = myNet.initializeNetwork(params)
     params.batch_size = torch.cuda.device_count() * params.batch_size
-    # move to GPU
-    # model = torch.nn.DataParallel(model)
     model = model.to(device)
     if params.encoder:
         output_encoder.cuda()
@@ -137,6 +141,7 @@ def main(params):
         device=device,
     )
     Trainer.train(trainLoader, testLoader, output_encoder)
+
     ################################################################
     # test neural network
     ################################################################
@@ -157,9 +162,6 @@ if __name__ == "__main__":
     ################################################################
     # Parser
     ################################################################
-    """
-    Parse in command line arguments, these are defined in input.txt
-    """
     # change the directory to main.py's directory
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     parser = argparse.ArgumentParser()
