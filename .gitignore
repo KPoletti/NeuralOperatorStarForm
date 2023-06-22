@@ -29,3 +29,7 @@ sweep_job_file
 JobResults/*
 Grav_Collapse_Results.ipynb
 sweep_job_file_FNO3d
+sweep_job_file_CNL2d_norm
+sweep_job_file_FNO2d_norm
+sweep_job_file_FNO2d_raw
+sweep_job_file_FNO3d_raw
