@@ -1,4 +1,4 @@
-cliffordlayers>=0.1.1
+cliffordlayers>=0.1.0
 matplotlib>=3.5.2
 neuraloperator>=0.2.0
 numpy>=1.23.4
