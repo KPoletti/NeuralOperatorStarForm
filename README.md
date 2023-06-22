@@ -1,6 +1,6 @@
 <!-- headline -->
 # NeuralOperatorStarForm
-Train a fourier neural operator to simulate MHD turbulence in a star-forming molecular cloud.
+Train a fourier neural operator to simulate MHD turbulence in a star-forming molecular cloud. Here is a link to the [docs](https://kpoletti.github.io/NeuralOperatorStarForm/)
 
 Currently under development. Software is configured to be used with four datasets:
 1. Turbulent Molecular Cloud - 2-D column density of a turbulent molecular cloud with varying magnetic field strength. It is self gravitating.
