@@ -166,7 +166,6 @@ def main(config=None):
         # test neural network
         Trainer.evaluate(
             validLoader,
-            validTime,
             output_encoder=output_encoder,
             input_encoder=input_encoder,
         )
