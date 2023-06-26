@@ -43,6 +43,7 @@ def create_animation(
     ani.save(
         f"{save_dir}_M{mass}_Movie.mp4", fps=fps, extra_args=["-vcodec", "libx264"]
     )
+    plt.close()
     return None
 
 
@@ -78,3 +79,4 @@ def random_plot(
     fig.colorbar(im2, ax=axs[2])
     # save the figure
     plt.savefig(f"{savename}_id1{idx1}_id2{idx2}.png")
+    plt.close()

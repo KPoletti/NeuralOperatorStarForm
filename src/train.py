@@ -105,12 +105,6 @@ class Trainer(object):
                 data_visible_check(data, sample["meta_x"], f"{savename}input", idx)
                 data_visible_check(target, sample["meta_y"], f"{savename}target", idx)
                 data_visible_check(output, sample["meta_y"], f"{savename}output", idx)
-                random_plot(
-                    data,
-                    output,
-                    target,
-                    savename=f"{self.plot_path}/random_plot_train",
-                )
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -124,12 +118,6 @@ class Trainer(object):
                 data_visible_check(data, sample["meta_x"], f"{savename}input", idx)
                 data_visible_check(target, sample["meta_y"], f"{savename}target", idx)
                 data_visible_check(output, sample["meta_y"], f"{savename}output", idx)
-                random_plot(
-                    data,
-                    output,
-                    target,
-                    f"{self.plot_path}/Train_decoded",
-                )
             # compute the loss
             loss = self.loss(output.float(), target)
             if len(loss.shape) > 1:
@@ -259,6 +247,10 @@ class Trainer(object):
         ############ RMSE ############
         num_Dims = len(prediction.shape)
         ind = -1
+        if "FNO3d" in self.params.NN:
+            prediction = prediction.permute(0, 3, 4, 1, 2)
+            truth = truth.permute(0, 3, 4, 1, 2)
+            input = input.permute(0, 3, 4, 1, 2)
         if num_Dims == 5:
             # select a random int between 0 and
             ind = np.random.randint(0, truth.shape[-2] - 1)
@@ -294,6 +286,7 @@ class Trainer(object):
         if len(savename) > 0:
             fig.savefig(f"{self.plot_path}/{savename}_RMSE.png")
         plt.close(fig)
+        plt.close()
 
     def evaluate(
         self,
@@ -361,18 +354,6 @@ class Trainer(object):
                     data_visible_check(
                         reData, sample["meta_y"], f"{save_plot}rolling", idx
                     )
-                    random_plot(
-                        data,
-                        output,
-                        target,
-                        f"{self.plot_path}/random_plot_valid",
-                    )
-                    random_plot(
-                        data,
-                        reData,
-                        target,
-                        f"{self.plot_path}/random_plot_rolling",
-                    )
 
                 # decode  if there is an output encoder
                 if output_encoder is not None:
@@ -401,19 +382,6 @@ class Trainer(object):
                     data_visible_check(
                         reData, sample["meta_y"], f"{save_plot}rolling", idx
                     )
-                    random_plot(
-                        data,
-                        output,
-                        target,
-                        savename=f"{self.plot_path}/random_plot_valid_decoded",
-                    )
-                    random_plot(
-                        data,
-                        reData,
-                        target,
-                        f"{self.plot_path}/random_plot_rolling_decoded",
-                    )
-
                 # assign the values to the tensors
                 pred[batchidx] = output
                 input[batchidx] = data

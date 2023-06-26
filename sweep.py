@@ -119,7 +119,7 @@ def main(config=None):
         ################################################################
         logger.info("........Loading data........")
         dataTime = time.time()
-        trainTime, testsTime, validTime = loadData(params, isDensity=False)
+        # trainTime, testsTime, validTime = loadData(params, isData=False)
         (
             trainLoader,
             testLoader,
@@ -139,8 +139,6 @@ def main(config=None):
         # create neural network
         model = myNet.initializeNetwork(params)
         params.batch_size = torch.cuda.device_count() * params.batch_size
-        # move to GPU
-        # model = torch.nn.DataParallel(model)
         model = model.to(device)
         if params.encoder:
             output_encoder.cuda()
@@ -159,6 +157,7 @@ def main(config=None):
             device=device,
         )
         Trainer.train(trainLoader, testLoader, output_encoder, sweep=True)
+        
         ################################################################
         # test neural network
         ################################################################
