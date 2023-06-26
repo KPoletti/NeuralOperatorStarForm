@@ -247,18 +247,28 @@ class Trainer(object):
         ############ RMSE ############
         num_Dims = len(prediction.shape)
         ind = -1
-        if "FNO3d" in self.params.NN:
-            prediction = prediction.permute(0, 3, 4, 1, 2)
-            truth = truth.permute(0, 3, 4, 1, 2)
-            input = input.permute(0, 3, 4, 1, 2)
         if num_Dims == 5:
+            # find which dimension is dN//2
+            for i in range(1, len(prediction.shape)):
+                if prediction.shape[i] == self.params.d:
+                    ind_dim = i
+                if prediction.shape[i] == self.params.dN // 2:
+                    ind_tim = i
+
             # select a random int between 0 and
-            ind = np.random.randint(0, truth.shape[-2] - 1)
-            t_ind = np.random.randint(0, truth.shape[-1] - 1)
-            # reduce the data to only that index
-            prediction = prediction[:, :, :, ind, t_ind]
-            truth = truth[:, :, :, ind, t_ind]
-            input = input[:, :, :, ind, t_ind]
+            ind = np.random.randint(0, self.params.d - 1)
+            t_ind = np.random.randint(0, self.params.dN // 2 - 1)
+
+            # reduce the data to only that indices for ind_dim and ind_tim
+            prediction = prediction.index_select(ind_dim, torch.tensor(ind))
+            prediction = prediction.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
+
+            truth = truth.index_select(ind_dim, torch.tensor(ind))
+            truth = truth.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
+
+            input = input.index_select(ind_dim, torch.tensor(ind))
+            input = input.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
+
             # and (n,x,y,t) flatten to (t*n, x, y)
             num_Dims = len(prediction.shape)
 
