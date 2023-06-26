@@ -5,13 +5,15 @@ import numpy as np
 
 
 def create_animation(
-    data: torch.tensor, time: torch.tensor, save_dir: str, mass: str, fps=10
+    data: torch.tensor, time: torch.tensor, save_dir: str, mass, fps=10
 ):
+    if isinstance(mass, str):
+        mass = [mass]
     # create an animation of the density and velocity data
     tmp = data.cpu().detach().numpy()
     fig, ax = plt.subplots(1, 3, figsize=(10, 5))
     im1 = ax[0].imshow(tmp[0, ..., 0], cmap="inferno")
-    ax[0].set_title("Density")
+    ax[0].set_title(f"Density Mass {mass[0]} M-sun Timestep {float(time[0]):0.3f} kyr")
     im2 = ax[1].imshow(tmp[0, ..., 1], cmap="inferno")
     ax[1].set_title("Velocity X")
     im3 = ax[2].imshow(tmp[0, ..., 2], cmap="inferno")
@@ -36,12 +38,18 @@ def create_animation(
             im1.set_clim(vmin=tmp[i, ..., 0].min(), vmax=tmp[i, ..., 0].max())
             im2.set_clim(vmin=tmp[i, ..., 1].min(), vmax=tmp[i, ..., 1].max())
             im3.set_clim(vmin=tmp[i, ..., 2].min(), vmax=tmp[i, ..., 2].max())
-
-        ax[0].set_title(f"Density Timestep {float(time[i]):0.3f} kyr")
+        if len(mass) > 1:
+            ax[0].set_title(
+                f"Density Mass {mass[i]} Timestep {float(time[i]):0.3f} kyr"
+            )
+        else:
+            ax[0].set_title(
+                f"Density Mass {mass[0]} Timestep {float(time[i]):0.3f} kyr"
+            )
 
     ani = animation.FuncAnimation(fig, animate, frames=NUM_FRAMES, interval=100)
     ani.save(
-        f"{save_dir}_M{mass}_Movie.mp4", fps=fps, extra_args=["-vcodec", "libx264"]
+        f"{save_dir}_M{mass[0]}_Movie.mp4", fps=fps, extra_args=["-vcodec", "libx264"]
     )
     plt.close()
     return None

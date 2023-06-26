@@ -157,7 +157,8 @@ class Trainer(object):
         self.loss = self.params.loss_fn
         # define a test loss function that will be the same regardless of training
         if sweep:
-            test_loss_fn = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
+            # use RMSE
+            test_loss_fn = nn.MSELoss(reduction="mean")
         else:
             test_loss_fn = self.loss
 
@@ -225,49 +226,70 @@ class Trainer(object):
         except:
             logger.error("Failed to save model")
 
-    def plot(self, timeData, prediction, input, truth, savename=""):
+    def plot(self, timeData, prediction, input, truth, rePred, mass, savename=""):
         """
         Plot the prediction
         Input:
             prediction: torch.tensor
             input: torch.tensor
             truth: torch.tensor
+
             savename: str
         Output:
             None
         """
         logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
-        # set the style
-        sns.set_style("darkgrid")
-
         ############ RMSE ############
         num_Dims = len(prediction.shape)
+        num_samples = prediction.shape[0]
         ind = -1
         if num_Dims == 5:
             # find which dimension is dN//2
             for i in range(1, len(prediction.shape)):
                 if prediction.shape[i] == self.params.d:
                     ind_dim = i
+                if prediction.shape[i] == self.params.S:
+                    ind_grid = i
                 if prediction.shape[i] == self.params.dN // 2:
                     ind_tim = i
+            ind_grid -= 1
 
             # select a random int between 0 and
             ind = np.random.randint(0, self.params.d - 1)
-            t_ind = np.random.randint(0, self.params.dN // 2 - 1)
+            gif_save = f"{self.plot_path}/All_valid"
+            # create an animation of the density and velocity data
+            plot_input = input.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            plot_input = plot_input.flatten(0, 1)
+            plot_truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            plot_truth = plot_truth.flatten(0, 1)
+            plot_prediction = prediction.permute(
+                0, ind_tim, ind_grid, ind_grid + 1, ind_dim
+            )
+            plot_prediction = plot_prediction.flatten(0, 1)
+            plot_rePred = rePred.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            plot_rePred = plot_rePred.flatten(0, 1)
+
+            create_animation(plot_input, timeData, f"{gif_save}_in", mass, fps=5)
+            create_animation(plot_truth, timeData, f"{gif_save}_tru", mass, fps=5)
+            create_animation(plot_prediction, timeData, f"{gif_save}_out", mass, fps=5)
+            create_animation(plot_rePred, timeData, f"{gif_save}_roll", mass, fps=5)
 
             # reduce the data to only that indices for ind_dim and ind_tim
             prediction = prediction.index_select(ind_dim, torch.tensor(ind))
-            prediction = prediction.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
+            prediction = prediction.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            prediction = prediction.squeeze().flatten(0, 1)
+            # prediction = prediction.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
 
             truth = truth.index_select(ind_dim, torch.tensor(ind))
-            truth = truth.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
+            # truth = truth.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
+            truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            truth = truth.squeeze().flatten(0, 1)
 
             input = input.index_select(ind_dim, torch.tensor(ind))
-            input = input.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
+            input = input.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            input = input.squeeze().flatten(0, 1)
+            # input = input.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
 
             # and (n,x,y,t) flatten to (t*n, x, y)
             num_Dims = len(prediction.shape)
@@ -282,14 +304,28 @@ class Trainer(object):
         relativeRMSE = torch.sqrt(torch.mean((input - truth) ** 2, dim=dims_to_rmse))
         # normalize RMSE
         relativeRMSE /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
+        import matplotlib.pyplot as plt
+        import seaborn as sns
 
+        # set the style
+        sns.set_style("darkgrid")
         # plot RMSE for each time step
         fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-        ax.plot(timeData, rmse, ".", label="Neural RMSE")
-        ax.plot(timeData, relativeRMSE, ".", label="RMSE between time steps")
+        ax.plot(
+            timeData[: 3 * num_samples],
+            rmse[: 3 * num_samples],
+            ".",
+            label="Neural RMSE",
+        )
+        ax.plot(
+            timeData[: 3 * num_samples],
+            relativeRMSE[: 3 * num_samples],
+            ".",
+            label="RMSE between time steps",
+        )
         ax.set_xlabel("Time (Myr)")
         ax.set_ylabel("Normalized  RMSE")
-        ax.set_title(f"RMSE Over Time for index {ind}, t_0 {t_ind}")
+        ax.set_title(f"RMSE Over Time for index {ind}, t_0 {timeData[0]}")
         ax.legend()
         im = wandb.Image(fig)
         wandb.log({"RMSE": im})
@@ -330,6 +366,7 @@ class Trainer(object):
         re_loss = 0
         rand_point = np.random.randint(0, len(data_loader))
         mass = "null"
+        mass_list = []
         timeData = torch.zeros(num_samples, lentime)
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
@@ -379,24 +416,13 @@ class Trainer(object):
                 if input_encoder is not None:
                     data = input_encoder.decode(data)
 
-                if batchidx == rand_point:
-                    save_plot = f"{self.plot_path}/Valid_decoded_"
-
-                    data_visible_check(data, sample["meta_x"], f"{save_plot}input", idx)
-                    data_visible_check(
-                        target, sample["meta_y"], f"{save_plot}target", idx
-                    )
-                    data_visible_check(
-                        output, sample["meta_y"], f"{save_plot}output", idx
-                    )
-                    data_visible_check(
-                        reData, sample["meta_y"], f"{save_plot}rolling", idx
-                    )
                 # assign the values to the tensors
                 pred[batchidx] = output
                 input[batchidx] = data
                 truth[batchidx] = target
                 rePred[batchidx] = reData
+
+                mass_list = mass_list + [cur_mass] * lentime
             # normalize test loss
             test_loss /= len(data_loader.dataset)
             re_loss /= len(data_loader.dataset)
@@ -426,9 +452,11 @@ class Trainer(object):
             )
         if self.params.doPlot:
             self.plot(
-                timeData=timeData[:num_samples],
+                timeData=timeData,
                 prediction=pred,
                 input=input,
                 truth=truth,
+                rePred=rePred,
+                mass=mass_list,
                 savename=savename,
             )

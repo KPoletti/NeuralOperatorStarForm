@@ -58,6 +58,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             out_channels=params.output_channels,
             use_mlp=True,
             mlp={"expansion": 0.5, "dropout": 0},
+            skip=params.skip_type,
         )
     elif params.NN == "MNO":
         model = FNO2d(

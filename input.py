@@ -121,7 +121,9 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO3d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+NN = "CNL2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+
+skip_type = "identity"  # "identity", "linear" or "softgate"
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -137,9 +139,9 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 200
-lr = 0.00042
-scheduler_step = 50
+epochs = 10
+lr = 0.004446
+scheduler_step = 5
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"
