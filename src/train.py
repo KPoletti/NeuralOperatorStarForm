@@ -26,6 +26,8 @@ def data_visible_check(data: torch.tensor, meta: dict, save: str, idx):
         meta: dictionary of metadata
         save: directory to save the plots
     """
+    if "FNO2d" in save:
+        return None
     # check if FNO3d is in save
     if "FNO3d" in save:
         data = data.permute(0, 1, 3, 4, 2)
@@ -256,7 +258,7 @@ class Trainer(object):
             ind_grid -= 1
 
             # select a random int between 0 and
-            ind = np.random.randint(0, self.params.d - 1)
+            ind = 0
             gif_save = f"{self.plot_path}/All_valid"
             # create an animation of the density and velocity data
             plot_input = input.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
@@ -293,6 +295,10 @@ class Trainer(object):
 
             # and (n,x,y,t) flatten to (t*n, x, y)
             num_Dims = len(prediction.shape)
+        elif num_Dims == 4:
+            prediction = prediction.squeeze().flatten(0, 1)
+            truth = truth.squeeze().flatten(0, 1)
+            input = input.squeeze().flatten(0, 1)
 
         dims_to_rmse = tuple(range(-num_Dims + 1, 0))
 
