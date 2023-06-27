@@ -299,6 +299,7 @@ class Trainer(object):
             prediction = prediction.squeeze().flatten(0, 1)
             truth = truth.squeeze().flatten(0, 1)
             input = input.squeeze().flatten(0, 1)
+            num_Dims = len(prediction.shape)
 
         dims_to_rmse = tuple(range(-num_Dims + 1, 0))
 
