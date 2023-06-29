@@ -14,7 +14,7 @@ loss_name = "H1Loss"  # LpLoss, H1Loss
 level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 saveNeuralNetwork = False  # Option to save the neural network
 doPlot = True  # Option to create plots
-
+use_mlp = True  # Option to use MLP
 # Pooling parameters
 poolKernel = 4  # set to 0 to disable pooling
 poolStride = 4  # set to 0 to disable pooling
@@ -57,6 +57,7 @@ elif data_name == "GravColl":
     N = 14
     if mass == "ALL":
         N = 902
+        N = 150
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
@@ -121,7 +122,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "CNL2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+NN = "FNO3d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
 
 skip_type = "identity"  # "identity", "linear" or "softgate"
 if NN == "MNO":
@@ -139,7 +140,7 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 10
+epochs = 50
 lr = 0.004446
 scheduler_step = 5
 scheduler_gamma = 0.5

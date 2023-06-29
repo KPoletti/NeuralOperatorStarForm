@@ -45,7 +45,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             hidden_channels=params.width,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
-            use_mlp=True,
+            use_mlp=params.use_mlp,
             mlp={"expansion": 0.5, "dropout": 0},
             skip=params.skip_type,
         )
@@ -57,7 +57,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             hidden_channels=params.width,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
-            use_mlp=True,
+            use_mlp=params.use_mlp,
             mlp={"expansion": 0.5, "dropout": 0},
             skip=params.skip_type,
         )
@@ -68,7 +68,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             hidden_channels=params.width,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
-            use_mlp=True,
+            use_mlp=params.use_mlp,
             mlp={"expansion": 0.5, "dropout": 0},
             skip=params.skip_type,
         )
