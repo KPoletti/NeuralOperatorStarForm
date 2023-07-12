@@ -73,7 +73,7 @@ def main(params):
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}"
-        f"_E{params.encoder}_N{N}"
+        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
     )
     params.path = path
     # check if path exists
