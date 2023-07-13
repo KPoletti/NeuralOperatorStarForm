@@ -1,11 +1,16 @@
-import torch
+"""
+This module contains utility functions for the Neural Operator StarForm project.
+Functions include data splitting, average pooling, and log10 normalization.
+"""
+import logging
 from dataclasses import dataclass
+
 import pandas as pd
-import wandb
 from neuralop.utils import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
-import logging
-import numpy as np
+
+import torch
+import wandb
 
 # initialize logger
 logger = logging.getLogger(__name__)
@@ -27,17 +32,17 @@ def dataSplit(params) -> tuple:
         tmp = pd.read_hdf(params.TIME_PATH, "table").shape[0]
     else:
         tmp = params.N
-    trainSize = int(tmp * params.split[0])
-    testSize = int(tmp * params.split[1])
-    validSize = int(tmp * params.split[2]) - 1
+    train_size = int(tmp * params.split[0])
+    test_size = int(tmp * params.split[1])
+    valid_size = int(tmp * params.split[2]) - 1
     # confirm no overlap or zeros
     try:
-        assert trainSize + testSize + validSize == tmp
+        assert train_size + test_size + valid_size == tmp
     except AssertionError:
         logger.warning("Data split is not correct. Manually setting split.")
-        validSize = tmp - trainSize - testSize
+        valid_size = tmp - train_size - test_size
 
-    return trainSize, testSize, validSize
+    return train_size, test_size, valid_size
 
 
 def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
@@ -51,7 +56,7 @@ def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
     """
     if params.poolKernel <= 0:
         return data
-    logger.debug(f"Pooling data with kernel size {params.poolKernel}")
+    logger.debug("Pooling data with kernel size %d", params.poolKernel)
     # permute the data to pool across density
     if len(data.shape) == 4:
         data = data.permute(0, 3, 1, 2)
@@ -71,7 +76,16 @@ def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
 
 
 class Log10Normalizer:
+    """
+    A class for normalizing data using a log10 transformation.
+    """
+
     def __init__(self, data):
+        """
+        Initializes the Log10Normalizer class.
+        Input:
+            data: the data to be normalized
+        """
         super().__init__()
         self.data = data
         self.min = data.min()
@@ -79,25 +93,40 @@ class Log10Normalizer:
         self.shape = data.shape
 
     def encode(self, data):
+        """
+        Encodes the data using a log10 transformation.
+        Input:
+            data: the data to be encoded
+        Output:
+            data: the encoded data
+        """
         if data.shape[-2] == 3:
             data[..., 0, :] = data[..., 0, :].log10()
             return data
-        else:
-            return data.log10()
+        return data.log10()
 
     def decode(self, data):
+        """
+        Decodes the data using a log10 transformation.
+        Input:
+            data: the data to be decoded
+        Output:
+            data: the decoded data
+        """
         base = torch.tensor(10.0)
         if data.shape[-2] == 3:
             data[..., 0, :] = base.pow(data[..., 0, :])
             return base.pow(data)
-        else:
-            return base.pow(data)
+        return base.pow(data)
 
     def cuda(self):
+        """
+        Moves the Log10Normalizer object to the GPU.
+        """
         return self
 
 
-def reduce_to_density(data: torch.tensor, params: dataclass) -> torch.tensor:
+def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
     """
     Reduces the data to only the density
     Input:
@@ -108,8 +137,7 @@ def reduce_to_density(data: torch.tensor, params: dataclass) -> torch.tensor:
     """
     if "GravColl" in params.data_name and "FNO2d" in params.NN:
         return data[..., 0, :]
-    else:
-        return data
+    return data
 
 
 def logData(data: torch.tensor, params: dataclass) -> torch.tensor:
@@ -121,13 +149,14 @@ def logData(data: torch.tensor, params: dataclass) -> torch.tensor:
     Output:
         data: torch.tensor data after logging
     """
+
     if params.log:
         log_encoder = Log10Normalizer(data)
         data = log_encoder.encode(data)
     return data
 
 
-def loadData(params: dataclass, isData: bool) -> tuple:
+def loadData(params: dataclass, is_data: bool) -> tuple:
     """
     Load data from the path specified in the input file
     Input:
@@ -145,28 +174,28 @@ def loadData(params: dataclass, isData: bool) -> tuple:
             testingData: pd.DataFrame testing data,
             validData: pd.DataFrame validation data,
     """
-    if isData:
+    if is_data:
         filename = params.TRAIN_PATH
-        fullData = torch.load(filename)
-        fullData = fullData.float()
+        full_data = torch.load(filename)
+        full_data = full_data.float()
         # reduce to density
-        fullData = reduce_to_density(fullData, params)
+        full_data = reduceToDensity(full_data, params)
         # log the data
-        fullData = logData(fullData, params)
+        full_data = logData(full_data, params)
         # average pool the data
-        fullData = averagePooling(fullData, params)
-        logger.debug(f"Full Data Shape: {fullData.shape}")
+        full_data = averagePooling(full_data, params)
+        logger.debug(f"Full Data Shape: {full_data.shape}")
     else:
         filename = params.TIME_PATH
         # load in data about each time step
-        fullData = pd.read_hdf(filename, "table")
+        full_data = pd.read_hdf(filename, "table")
     # find the indices to split the data
     # trainData, testData, validData = train_test_valid_split(params, fullData)
     # del fullData
-    return fullData
+    return full_data
 
 
-def train_test_valid_split(params: dataclass, data: torch.tensor) -> tuple:
+def trainTestValidSplit(params: dataclass, data: torch.tensor) -> tuple:
     """
     Break the data into training, testing, and validation sets
     Input:
@@ -181,16 +210,16 @@ def train_test_valid_split(params: dataclass, data: torch.tensor) -> tuple:
             S is the size of the image
             2 corresponds to the density at time t and t+1
     """
-    trainSize, testSize, validSize = dataSplit(params)
+    train_size, test_size, valid_size = dataSplit(params)
     # load data
-    trainData = data[:trainSize]
-    testData = data[trainSize : trainSize + testSize]
-    validData = data[-validSize:]
-    return trainData, testData, validData
+    train_data = data[:train_size]
+    test_data = data[train_size : train_size + test_size]
+    valid_data = data[-valid_size:]
+    return train_data, test_data, valid_data
 
 
 def timestepSplit(
-    dataSet: torch.tensor, dataInfo: pd.DataFrame, params: dataclass
+    dataset: torch.tensor, data_info: pd.DataFrame, params: dataclass
 ) -> tuple:
     """
     Split the data into the time step to predict and the time step to use
@@ -204,16 +233,16 @@ def timestepSplit(
         dataInfo_a: pd.DataFrame information about the time step to use
         dataInfo_u: pd.DataFrame information about the time step to predict
     """
-    dataSet_a = dataSet[..., : params.T_in]
-    dataSet_u = dataSet[..., params.T_in : params.T_in + params.T]
+    dataset_a = dataset[..., : params.T_in]
+    dataset_u = dataset[..., params.T_in : params.T_in + params.T]
     # split the data frame betwen the time step to predict and the time step to use
     try:
-        dataInfo_a = dataInfo["t"]
-        dataInfo_u = dataInfo["t+1"]
+        data_info_a = data_info["t"]
+        data_info_u = data_info["t+1"]
     except KeyError:
         logger.warning("No dataInfo['t'] found")
         # get all the keys in the dataframe
-        keys = dataInfo.keys()
+        keys = data_info.keys()
         keys = [*set([key[0] for key in keys])]
         keys.sort()
 
@@ -221,12 +250,12 @@ def timestepSplit(
         keys_a = [key for key in keys if int(key.split("+")[1]) <= params.T_in - 1]
         keys_u = [key for key in keys if int(key.split("+")[1]) >= params.T_in - 1]
         # split the dataframe
-        dataInfo_a = dataInfo[keys_a]
-        dataInfo_u = dataInfo[keys_u]
-    return dataSet_a, dataSet_u, dataInfo_a, dataInfo_u
+        data_info_a = data_info[keys_a]
+        data_info_u = data_info[keys_u]
+    return dataset_a, dataset_u, data_info_a, data_info_u
 
 
-def dfTolist(df: pd.DataFrame) -> list:
+def dfTolist(frame: pd.DataFrame) -> list:
     """
     Convert a dataframe to a list of tensors
     Input:
@@ -238,20 +267,20 @@ def dfTolist(df: pd.DataFrame) -> list:
 
     data = {}
     # find keys of the dataframe
-    keys = df.keys()
-    for i in range(len(df)):
+    keys = frame.keys()
+    for i in range(len(frame)):
         info = {}
         # find the mass of the star
-        snap = df.iloc[i][keys[0][0]]["file"]
+        snap = frame.iloc[i][keys[0][0]]["file"]
         # split the file by mass
         info["mass"] = snap.split("M")[-1].split("_")[0]
-        info["time"] = [df.iloc[i][key[0]]["time"] for key in keys[::2]]
+        info["time"] = [frame.iloc[i][key[0]]["time"] for key in keys[::2]]
         # append info to the list
         data[i] = info
     return data
 
 
-class multiVarible_normalizer:
+class MultiVariableNormalizer:
     """
     Normalize the data by the mean and standard deviation for velocity and density separately
     Input:
@@ -268,6 +297,13 @@ class multiVarible_normalizer:
         self.vel_encoder = UnitGaussianNormalizer(data[..., 1:], verbose=verbose)
 
     def encode(self, data):
+        """
+        Encode the data by normalizing the density and velocity separately
+        Input:
+            data: torch.tensor data to encode
+        Output:
+            data: torch.tensor encoded data
+        """
         rho = self.rho_encoder.encode(data[..., 0])
         vel = self.vel_encoder.encode(data[..., 1:])
         data[..., 0] = rho
@@ -275,6 +311,13 @@ class multiVarible_normalizer:
         return data
 
     def decode(self, data):
+        """
+        Decode the data by denormalizing the density and velocity separately
+        Input:
+            data: torch.tensor data to decode
+        Output:
+            data: torch.tensor decoded data
+        """
         rho = self.rho_encoder.decode(data[..., 0])
         vel = self.vel_encoder.decode(data[..., 1:])
         data[..., 0] = rho
@@ -282,39 +325,64 @@ class multiVarible_normalizer:
         return data
 
     def cuda(self):
+        """
+        Move the model to the GPU
+        """
         self.rho_encoder.cuda()
         self.vel_encoder.cuda()
         return self
 
     def cpu(self):
+        """
+        Move the model to the CPU
+        """
         self.rho_encoder.cpu()
         self.vel_encoder.cpu()
         return self
 
     def to(self, device):
+        """
+        Move the model to the specified device
+        """
         self.rho_encoder.to(device)
         self.vel_encoder.to(device)
         return self
 
 
-def permute_FNO3d(
-    data: torch.tensor, params: dataclass, size: int, gridsize: int, dim: int = 1
-) -> torch.tensor:
-    # data = data.reshape(size, gridsize, gridsize, dim, params.T_in)
-    # data = data.repeat([1, 1, 1, params.T, 1])
+def permuteFNO3d(data: torch.tensor) -> torch.tensor:
+    """Block permutes the data to the correct shape for the FNO3d network
+
+    Args:
+        data (torch.tensor): data to permute
+
+    Returns:
+        torch.tensor: permuted data
+    """
     data = data.permute(0, 4, 3, 1, 2)
     return data
 
 
-def permute_FNO2d(
+def permuteFNO2d(
     data: torch.tensor, params: dataclass, size: int, gridsize: int
 ) -> torch.tensor:
+    """Block permutes the data to the correct shape for the FNO2d network
+
+    Args:
+        data (torch.tensor): data to permute
+        params (dataclass): input parameters from the input file
+        size (int): number of samples
+        gridsize (int): gridsize of the data
+
+    Returns:
+        torch.tensor: permuted data
+    """
     data = data.reshape(size, gridsize, gridsize, params.T_in)
     data = data.permute(0, 3, 1, 2)
     return data
 
 
-def permute_CNL2d(data: torch.tensor) -> torch.tensor:
+def permuteCNL2d(data: torch.tensor) -> torch.tensor:
+    """Block permutes the data to the correct shape for the CNL2d network"""
     return data.permute(0, 4, 1, 2, 3)
 
 
@@ -328,22 +396,33 @@ def permute(data, params, size, gridsize) -> torch.tensor:
         data: torch.tensor permuted data
     """
     if "FNO3d" in params.NN:
-        return permute_FNO3d(data, params, size, gridsize, dim=3)
+        return permuteFNO3d(data)
         # return permute_CNL2d(data)
 
     elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
-        return permute_FNO2d(data, params, size, gridsize)
+        return permuteFNO2d(data, params, size, gridsize)
 
     elif "CNL2d" in params.NN:
-        return permute_CNL2d(data)
+        return permuteCNL2d(data)
     else:
         raise ValueError(f"Unknown Neural Network: {params.NN}")
 
 
 def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tuple:
+    """
+    Initialize the input and output encoders for the given data
+    Input:
+        data_a: torch.tensor data for the input encoder
+        data_u: torch.tensor data for the output encoder
+        params: input parameters from the input file
+        verbosity: boolean flag for verbose output
+    Output:
+        input_encoder: initialized input encoder
+        output_encoder: initialized output encoder
+    """
     if "GravColl" in params.data_name:
-        input_encoder = multiVarible_normalizer(data_a, verbose=verbosity)
-        output_encoder = multiVarible_normalizer(data_u, verbose=verbosity)
+        input_encoder = MultiVariableNormalizer(data_a, verbose=verbosity)
+        output_encoder = MultiVariableNormalizer(data_u, verbose=verbosity)
     else:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
@@ -370,221 +449,107 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     """
     # TODO: Write tests for this function
 
-    trainSize, testsSize, validSize = dataSplit(params)
-    logger.debug(f"Full size: {trainSize + testsSize + validSize}")
-    logger.debug(f"Train size: {trainSize}")
-    logger.debug(f"Test size: {testsSize}")
-    logger.debug(f"Valid size: {validSize}")
+    train_size, tests_size, valid_size = dataSplit(params)
+    logger.debug("Full size: %s", train_size + tests_size + valid_size)
 
-    wandb.config["Train data"] = trainSize
-    wandb.config["Test data"] = testsSize
-    wandb.config["Valid data"] = validSize
-    wandb.config["Total data"] = trainSize + testsSize + validSize
+    logger.debug("Train size: %s", train_size)
+    logger.debug("Test size: %s", tests_size)
+    logger.debug("Valid size: %s", valid_size)
+    wandb.config["Train data"] = train_size
+
+    wandb.config["Test data"] = tests_size
+    wandb.config["Valid data"] = valid_size
+    wandb.config["Total data"] = train_size + tests_size + valid_size
 
     # load data
-    fullData = loadData(params, isData=True)
-    timeData = loadData(params, isData=False)
+    full_data = loadData(params, is_data=True)
+    time_data = loadData(params, is_data=False)
     # divide data into time step and timestep to predict
-    fullData_a, fullData_u, timeData_a, timeData_u = timestepSplit(
-        fullData, timeData, params
+    full_data_a, full_data_u, time_data_a, time_data_u = timestepSplit(
+        full_data, time_data, params
     )
     # permute data to correct shape
-    fullData_a = permute(fullData_a, params, fullData_a.shape[0], S)
-    fullData_u = permute(fullData_u, params, fullData_u.shape[0], S)
+    full_data_a = permute(full_data_a, params, full_data_a.shape[0], S)
+    full_data_u = permute(full_data_u, params, full_data_u.shape[0], S)
 
     # split data into training, testing, and validation subsets
-    trainData_a, testsData_a, validData_a = train_test_valid_split(params, fullData_a)
-    trainData_u, testsData_u, validData_u = train_test_valid_split(params, fullData_u)
+    train_data_a, tests_data_a, valid_data_a = trainTestValidSplit(params, full_data_a)
+    train_data_u, tests_data_u, valid_data_u = trainTestValidSplit(params, full_data_u)
 
-    trainTime_a, testsTime_a, validTime_a = train_test_valid_split(params, timeData_a)
-    trainTime_u, testsTime_u, validTime_u = train_test_valid_split(params, timeData_u)
+    train_time_a, tests_time_a, valid_time_a = trainTestValidSplit(params, time_data_a)
+    train_time_u, tests_time_u, valid_time_u = trainTestValidSplit(params, time_data_u)
 
     # TODO: Figure out how to include the timesteps in the data
     if params.level == "DEBUG":
-        print(f"Train Data Shape: {trainData_a.shape}")
-        print(f"Test Data Shape: {testsData_a.shape}")
-        print(f"Valid Data Shape: {validData_a.shape}")
+        print(f"Train Data Shape: {train_data_a.shape}")
+        print(f"Test Data Shape: {tests_data_a.shape}")
+        print(f"Valid Data Shape: {valid_data_a.shape}")
 
     if params.encoder:
         # initialize the encoder
         input_encoder, output_encoder = initializeEncoder(
-            trainData_a, trainData_u, params
+            train_data_a, train_data_u, params
         )
         # normalize input and ouput data
-        trainData_a = input_encoder.encode(trainData_a)
-        testsData_a = input_encoder.encode(testsData_a)
-        validData_a = input_encoder.encode(validData_a)
+        train_data_a = input_encoder.encode(train_data_a)
+        tests_data_a = input_encoder.encode(tests_data_a)
+        valid_data_a = input_encoder.encode(valid_data_a)
 
-        trainData_u = output_encoder.encode(trainData_u)
+        train_data_u = output_encoder.encode(train_data_u)
     else:
         output_encoder = None
         input_encoder = None
 
     # define the grid
-    grid_bounds = [[-2.5, 2.5], [-2.5, 2.5]]
-    logger.debug(f"Train Data A Shape: {trainData_a.shape}")
-    logger.debug(f"Train Data U Shape: {trainData_u.shape}")
-    logger.debug(f"Test Data A Shape: {testsData_a.shape}")
-    logger.debug(f"Test Data U Shape: {testsData_u.shape}")
-    logger.debug(f"Valid Data A Shape: {validData_a.shape}")
-    logger.debug(f"Valid Data U Shape: {validData_u.shape}")
+    logger.debug("Train Data A Shape: %s", train_data_a.shape)
+    logger.debug("Train Data U Shape: %s", train_data_u.shape)
+    logger.debug("Test Data A Shape: %s", tests_data_a.shape)
+    logger.debug("Test Data U Shape: %s", tests_data_u.shape)
+    logger.debug("Valid Data A Shape: %s", valid_data_a.shape)
+    logger.debug("Valid Data U Shape: %s", valid_data_u.shape)
 
     # Assert that the data is the correct shape
     try:
-        assert trainData_a.shape == trainData_u.shape
-        assert testsData_a.shape == testsData_u.shape
-        assert validData_a.shape == validData_u.shape
+        assert train_data_a.shape == train_data_u.shape
+        assert tests_data_a.shape == tests_data_u.shape
+        assert valid_data_a.shape == valid_data_u.shape
     except AssertionError:
         logger.error("Data shapes do not match. Manually fixing.")
 
     # Load the data into a tensor dataset
-    trainDataset = TensorDataset(
-        trainData_a,
-        trainData_u,
-        dfTolist(trainTime_a),
-        dfTolist(trainTime_u),
+    train_dataset = TensorDataset(
+        train_data_a,
+        train_data_u,
+        dfTolist(train_time_a),
+        dfTolist(train_time_u),
     )
-    testsDataset = TensorDataset(
-        testsData_a,
-        testsData_u,
-        dfTolist(testsTime_a),
-        dfTolist(testsTime_u),
+    tests_dataset = TensorDataset(
+        tests_data_a,
+        tests_data_u,
+        dfTolist(tests_time_a),
+        dfTolist(tests_time_u),
     )
-    validDataset = TensorDataset(
-        validData_a,
-        validData_u,
-        dfTolist(validTime_a),
-        dfTolist(validTime_u),
+    valid_dataset = TensorDataset(
+        valid_data_a,
+        valid_data_u,
+        dfTolist(valid_time_a),
+        dfTolist(valid_time_u),
     )
     # Create the data loader
     # TODO: Fix the batch size for the tests and valid loaders
     # On gravcoll, for (15, 10, 200, 200 ,3) the test loss will grow if validSize =0
-    trainLoader = torch.utils.data.DataLoader(
-        trainDataset, batch_size=params.batch_size, shuffle=True, drop_last=True
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=params.batch_size, shuffle=True, drop_last=True
     )
-    if testsSize >= params.batch_size * 2:
-        testLoader = torch.utils.data.DataLoader(
-            testsDataset, batch_size=params.batch_size, shuffle=False, drop_last=True
+    if tests_size >= params.batch_size * 2:
+        test_loader = torch.utils.data.DataLoader(
+            tests_dataset, batch_size=params.batch_size, shuffle=False, drop_last=True
         )
     else:
-        testLoader = torch.utils.data.DataLoader(
-            testsDataset, batch_size=1, shuffle=False, drop_last=True
+        test_loader = torch.utils.data.DataLoader(
+            tests_dataset, batch_size=1, shuffle=False, drop_last=True
         )
-    validLoader = torch.utils.data.DataLoader(
-        validDataset, batch_size=1, shuffle=False, drop_last=True
+    valid_loader = torch.utils.data.DataLoader(
+        valid_dataset, batch_size=1, shuffle=False, drop_last=True
     )
-    return trainLoader, testLoader, validLoader, input_encoder, output_encoder
-
-
-def deprecatedPrepareDataForTraining(params: dataclass, S: int) -> tuple:
-    """
-        Loads in the data,
-        Splits it into training, testing, and validation subsets
-        Splits the data into the time step to predict and the time step to use
-        Normalizes the data
-        Reformats the data into the correct shape for the neural network
-        Loads the data into pytorch dataLoaders
-        Input:
-            params: input parameters from the input file
-            S: int size of the image
-        Output:
-            trainLoader: torch.utils.data.DataLoader training dataS
-    Sdata
-            output_encoder: neuralop.utils.UnitGaussianNormalizer
-    """
-    # TODO: Write tests for this function
-
-    trainSize, testsSize, validSize = dataSplit(params)
-    logger.debug(f"Full size: {trainSize + testsSize + validSize}")
-    logger.debug(f"Train size: {trainSize}")
-    logger.debug(f"Test size: {testsSize}")
-    logger.debug(f"Valid size: {validSize}")
-    wandb.config["Train data"] = trainSize
-    wandb.config["Test data"] = testsSize
-    wandb.config["Valid data"] = validSize
-    wandb.config["Total data"] = trainSize + testsSize + validSize
-
-    # load data
-    trainData, testsData, validData = loadData(params, isData=True)
-    trainTime, testsTime, validTime = loadData(params, isData=False)
-    logger.debug(f"trainData shape: {trainData.shape}")
-    # divide data into time step and timestep to predict
-
-    # TODO: Figure out how to include the timesteps in the data
-    trainData_a, trainData_u, trainTime_a, trainTime_u = timestepSplit(
-        trainData, trainTime, params
-    )
-    testsData_a, testsData_u, testsTime_a, testsTime_u = timestepSplit(
-        testsData, testsTime, params
-    )
-    validData_a, validData_u, validTime_a, validTime_u = timestepSplit(
-        validData, validTime, params
-    )
-    if params.level == "DEBUG":
-        print(f"Train Data Shape: {trainData_a.shape}")
-        print(f"Test Data Shape: {testsData_a.shape}")
-        print(f"Valid Data Shape: {validData_a.shape}")
-
-    # check if nn contains FNO
-    if "FNO3d" in params.NN:
-        trainData_a_deprecated = trainData_a.reshape(
-            trainSize, S, S, 1, params.T_in
-        ).repeat([1, 1, 1, params.T, 1])
-        testsData_a_deprecated = testsData_a.reshape(
-            testsSize, S, S, 1, params.T_in
-        ).repeat([1, 1, 1, params.T, 1])
-        validData_a_deprecated = validData_a.reshape(
-            validSize, S, S, 1, params.T_in
-        ).repeat([1, 1, 1, params.T, 1])
-        trainData_a_deprecated = trainData_a_deprecated.permute(0, 3, 4, 1, 2)
-        testsData_a_deprecated = testsData_a_deprecated.permute(0, 3, 4, 1, 2)
-        validData_a_deprecated = validData_a_deprecated.permute(0, 3, 4, 1, 2)
-        # permute u data
-        trainData_u_deprecated = trainData_u.reshape(
-            trainSize, S, S, 1, params.T_in
-        ).repeat([1, 1, 1, params.T, 1])
-        testsData_u_deprecated = testsData_u.reshape(
-            testsSize, S, S, 1, params.T_in
-        ).repeat([1, 1, 1, params.T, 1])
-        validData_u_deprecated = validData_u.reshape(
-            validSize, S, S, 1, params.T_in
-        ).repeat([1, 1, 1, params.T, 1])
-        trainData_u_deprecated = trainData_u_deprecated.permute(0, 3, 4, 1, 2)
-        testsData_u_deprecated = testsData_u_deprecated.permute(0, 3, 4, 1, 2)
-        validData_u_deprecated = validData_u_deprecated.permute(0, 3, 4, 1, 2)
-
-    elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
-        trainData_a_deprecated = trainData_a.reshape(trainSize, S, S, params.T_in)
-        testsData_a_deprecated = testsData_a.reshape(testsSize, S, S, params.T_in)
-        validData_a_deprecated = validData_a.reshape(validSize, S, S, params.T_in)
-        trainData_a_deprecated = trainData_a.permute(0, 3, 1, 2)
-        testsData_a_deprecated = testsData_a.permute(0, 3, 1, 2)
-        validData_a_deprecated = validData_a.permute(0, 3, 1, 2)
-        # permute u data
-        trainData_u_deprecated = trainData_u.permute(0, 3, 1, 2)
-        testsData_u_deprecated = testsData_u.permute(0, 3, 1, 2)
-        validData_u_deprecated = validData_u.permute(0, 3, 1, 2)
-
-    elif "CNL2d" in params.NN:
-        num_dims = trainData.shape[-2]
-        # trainData_a_deprecated = trainData_a_deprecated.reshape(trainSize, params.T_in, S, S, num_dims)
-        # testsData_a_deprecated = testsData_a_deprecated.reshape(testsSize, params.T_in, S, S, num_dims)
-        # validData_a = validData_a.reshape(validSize, params.T_in, S, S, num_dims)
-        x_a = trainData_a.permute(0, 4, 1, 2, 3)
-        testsData_a_deprecated = testsData_a.permute(0, 4, 1, 2, 3)
-        validData_a_deprecated = validData_a.permute(0, 4, 1, 2, 3)
-
-        # select rand ind of Train data
-        ind_t = np.random.randint(0, trainData_a.shape[-1])
-        ind_pt = np.random.randint(0, trainData_a.shape[0])
-
-        # assert that the data is correctly permuted
-        torch.testing.assert_close(
-            x_a[ind_pt, ind_t, :, :, :], trainData_a[ind_pt, :, :, :, ind_t]
-        )
-        trainData_a_deprecated = x_a
-
-        # permute u data
-        trainData_u_deprecated = trainData_u.permute(0, 4, 1, 2, 3)
-        testsData_u_deprecated = testsData_u.permute(0, 4, 1, 2, 3)
-        validData_u_deprecated = validData_u.permute(0, 4, 1, 2, 3)
+    return train_loader, test_loader, valid_loader, input_encoder, output_encoder

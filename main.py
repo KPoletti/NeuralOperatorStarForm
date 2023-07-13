@@ -1,21 +1,23 @@
+import argparse
+import json
+import logging
 import os
-from src.utilsMain import *
-import torch
+import time
+
 import numpy as np
 import src.networkUtils as myNet
 import src.train as myTrain
-import argparse
-import logging
-import time
+from src.utilsMain import prepareDataForTraining
+
+import torch
 import wandb
-import json
 
 
-def convertParamsToDict(params):
+def convertParamsToDict(params_obj):
     """
     Converts the params to a dictionary for wandb
     """
-    paramsDict = {}
+    params_dict = {}
     unneeded = [
         "__name__",
         "__doc__",
@@ -32,12 +34,12 @@ def convertParamsToDict(params):
         "H1Loss",
         "math",
     ]
-    for key, value in vars(params).items():
+    for key, value in vars(params_obj).items():
         # skip the levels that are not needed
         if key in unneeded:
             continue
-        paramsDict[key] = value
-    return paramsDict
+        params_dict[key] = value
+    return params_dict
 
 
 def convertParamsToJSON(params):

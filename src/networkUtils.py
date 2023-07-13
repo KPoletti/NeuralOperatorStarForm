@@ -1,20 +1,27 @@
-import os
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from neuralop.models import FNO3d, FNO2d, FNO
-from cliffordlayers.models.utils import partialclass
-from cliffordlayers.models.models_2d import (
-    CliffordNet2d,
-    CliffordFourierBasicBlock2d,
-)
-from cliffordlayers.models.models_3d import (
-    CliffordNet3d,
-    CliffordFourierBasicBlock3d,
-)
-import input as param
+"""
+This module contains utility functions for defining and initializing neural networks used in the 
+Neural Operator StarForm project.
+
+Functions:
+    initializeNetwork(params: dataclass) -> nn.Module:
+        Initializes the neural network model based on the input parameters.
+
+Classes:
+    None
+
+Exceptions:
+    None
+"""
 import logging
 from dataclasses import dataclass
+
+from neuralop.models import FNO2d, FNO3d
+
+import torch.nn.functional as F
+from cliffordlayers.models.models_2d import CliffordFourierBasicBlock2d, CliffordNet2d
+from cliffordlayers.models.models_3d import CliffordFourierBasicBlock3d, CliffordNet3d
+from cliffordlayers.models.utils import partialclass
+from torch import nn
 
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
@@ -30,13 +37,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
     Output:
         model: torch.nn.Module
     """
-    models = {
-        "FNO3d": FNO3d,
-        "MNO": FNO2d,
-        "FNO": FNO,
-        "CNL2d": CliffordNet2d,
-        "CNL3d": CliffordNet3d,
-    }
+
     # TODO: allow MLP to be input parameter
     if params.NN == "FNO2d":
         model = FNO2d(
