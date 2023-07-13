@@ -9,7 +9,7 @@ import math
 data_name = "GravColl"  # NS-Caltech, StarForm, GravColl or CATS
 
 log = False  # Option to take the log of the data
-encoder = False  # Option to use the encoder
+encoder = True  # Option to use the encoder
 loss_name = "H1Loss"  # LpLoss, H1Loss
 level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 saveNeuralNetwork = False  # Option to save the neural network
@@ -40,10 +40,10 @@ if data_name == "NS-Caltech":
 # For Grav Collapse
 ##############################################
 elif data_name == "GravColl":
-    S = 200
+    S = 128
     T = 5
     T_in = 5
-    DATA_PATH = "../dataToSend/TrainingData/Simulations/"
+    DATA_PATH = "../dataToSend/TrainingData/LowRes/"
     dN = 10
     # Grav_M1.00_dN10_dt0.0204_multiData
     mass = "ALL"
@@ -52,7 +52,7 @@ elif data_name == "GravColl":
     # TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.pt"
     # TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}_dt{dt}{extras}.h5"
 
-    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}_pooled.pt"
+    TRAIN_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.pt"
     TIME_PATH = f"{DATA_PATH}Grav_M{mass}_dN{dN}{extras}.h5"
     N = 14
     if mass == "ALL":
@@ -141,7 +141,7 @@ if NN == "MNO":
 # Training parameters
 ##############################################
 epochs = 50
-lr = 0.004446
+lr = 0.0004446
 scheduler_step = 5
 scheduler_gamma = 0.5
 batch_size = 10
