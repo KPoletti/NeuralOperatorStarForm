@@ -1,17 +1,24 @@
-import os
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import scipy
-import time
-import wandb
-import matplotlib.pyplot as plt
-from neuralop.training.losses import LpLoss, H1Loss
-from dataclasses import dataclass
-import numpy as np
-import pandas as pd
+"""
+This module contains the Trainer class, which is used for training a neural network model.
+It also contains utility functions for checking the visibility of data and creating animations.
+"""
 import logging
-from src.plottingUtils import create_animation, random_plot
+import os
+import time
+from dataclasses import dataclass
+
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+import seaborn as sns
+from src.plottingUtils import createAnimation
+
+import torch
+import wandb
+from torch import nn
+
+# from neuralop.training.losses import LpLoss, H1Loss
+
 
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
@@ -41,7 +48,7 @@ class NormalizedMSE:
         return self.mse(x, y) / torch.mean(y)
 
 
-def data_visible_check(data: torch.tensor, meta: dict, save: str, idx):
+def dataVisibleCheck(data: torch.tensor, meta: dict, save: str, idx):
     """
     Creates a mp4 of a random batch of the data to check if the data is visible
     Inputs:
@@ -59,15 +66,37 @@ def data_visible_check(data: torch.tensor, meta: dict, save: str, idx):
 
     # reduce the meta data to just that batch
     mass = meta["mass"][idx]
-    time = torch.tensor([t[idx] for t in meta["time"]])
+    time_data = torch.tensor([t[idx] for t in meta["time"]])
     # create an animation of the density and velocity data
-    create_animation(data, time, save, mass, fps=1)
+    createAnimation(data, time_data, save, mass, fps=1)
 
 
 class Trainer(object):
+    """
+    A class for training a neural network model.
+
+    Attributes:
+        model (nn.Module): The neural network model to train.
+        params (dataclass): A dataclass containing the hyperparameters for training.
+        device (torch.device): The device to use for training (e.g. "cpu" or "cuda").
+        optimizer (torch.optim.Optimizer): The optimizer to use for training.
+        scheduler (torch.optim.lr_scheduler._LRScheduler): The learning rate scheduler to use for
+                                                           training.
+        loss (callable): The loss function to use for training.
+        plot_path (str): The directory to save the plots.
+    """
+
     def __init__(
         self, model: nn.Module, params: dataclass, device: torch.device
     ) -> None:
+        """
+        Initializes a Trainer object.
+
+        Args:
+            model (nn.Module): The neural network model to train.
+            params (dataclass): A dataclass containing the hyperparameters for training.
+            device (torch.device): The device to use for training (e.g. "cpu" or "cuda").
+        """
         self.model = model
         self.params = params
         self.device = device
@@ -83,16 +112,26 @@ class Trainer(object):
         self.plot_path = f"results/{self.params.path}/plots"
 
     def dissipativeRegularizer(
-        self, x: torch.Tensor, device: torch.device
+        self, data: torch.Tensor, device: torch.device
     ) -> torch.nn.MSELoss:
+        """
+        Computes the dissipative regularization loss for a given input tensor x.
+
+        Args:
+            x (torch.Tensor): The input tensor to compute the dissipative regularization loss for.
+            device (torch.device): The device to use for computation.
+
+        Returns:
+            torch.nn.MSELoss: The dissipative regularization loss.
+        """
         # TODO: Test this function
 
         # DISSIPATIVE REGULARIZATION
         x_diss = torch.tensor(
-            self.params.sampling_fn(x.shape[0], self.params.radii, x.shape[1:]),
+            self.params.sampling_fn(data.shape[0], self.params.radii, data.shape[1:]),
             dtype=torch.float,
         ).to(device)
-        assert x_diss.shape == x.shape
+        assert x_diss.shape == data.shape
         y_diss = self.params.target_fn(x_diss, self.params.scale_down).to(device)
         out_diss = self.model(x_diss).reshape(-1, self.params.out_dim)
         diss_loss = (
@@ -103,6 +142,17 @@ class Trainer(object):
         return diss_loss
 
     def batchLoop(self, train_loader, output_encoder=None, epoch: int = 1):
+        """
+        A function to loop through the batches in the training data.
+
+        Args:
+            train_loader (torch.utils.data.DataLoader): The training data loader.
+            output_encoder (callable): The output encoder to use for decoding the output.
+            epoch (int): The current epoch number.
+
+        Returns:
+            tuple: A tuple containing the training loss and the loss of the last batch.
+        """
         # initialize loss
         train_loss = 0
         # loss = 0
@@ -127,9 +177,9 @@ class Trainer(object):
             if batch_idx == rand_point and epoch == 53:
                 savename = f"{self.plot_path}/Train_"
                 idx = np.random.randint(0, data.shape[0] - 1)
-                data_visible_check(data, sample["meta_x"], f"{savename}input", idx)
-                data_visible_check(target, sample["meta_y"], f"{savename}target", idx)
-                data_visible_check(output, sample["meta_y"], f"{savename}output", idx)
+                dataVisibleCheck(data, sample["meta_x"], f"{savename}input", idx)
+                dataVisibleCheck(target, sample["meta_y"], f"{savename}target", idx)
+                dataVisibleCheck(output, sample["meta_y"], f"{savename}output", idx)
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -140,9 +190,9 @@ class Trainer(object):
 
             if batch_idx == rand_point and epoch == 53:
                 savename = f"{self.plot_path}/Train_decoded_"
-                data_visible_check(data, sample["meta_x"], f"{savename}input", idx)
-                data_visible_check(target, sample["meta_y"], f"{savename}target", idx)
-                data_visible_check(output, sample["meta_y"], f"{savename}output", idx)
+                dataVisibleCheck(data, sample["meta_x"], f"{savename}input", idx)
+                dataVisibleCheck(target, sample["meta_y"], f"{savename}target", idx)
+                dataVisibleCheck(output, sample["meta_y"], f"{savename}output", idx)
             # compute the loss
             loss = self.loss(output.float(), target)
             if len(loss.shape) > 1:
@@ -214,13 +264,13 @@ class Trainer(object):
                     if batch_idx == rand_point and epoch == 53:
                         idx = np.random.randint(0, data.shape[0] - 1)
                         savename = f"{self.plot_path}/Test_decoded_"
-                        data_visible_check(
+                        dataVisibleCheck(
                             data, sample["meta_x"], f"{savename}input", idx
                         )
-                        data_visible_check(
+                        dataVisibleCheck(
                             target, sample["meta_y"], f"{savename}target", idx
                         )
-                        data_visible_check(
+                        dataVisibleCheck(
                             output, sample["meta_y"], f"{savename}output", idx
                         )
                     test_loss += test_loss_fn(output, target).item()
@@ -231,11 +281,14 @@ class Trainer(object):
 
             epoch_timer = time.time() - epoch_timer
             logger.info(
-                f"Epoch: {epoch+1}/{self.params.epochs} \t"
-                f"Took: {epoch_timer:.2f} \t"
-                f"Training Loss: {train_loss:.6f} \t"
-                f"Test Loss: {test_loss:.6f}"
+                "Epoch: %d/%d \t Took: %.2f \t Training Loss: %.6f \t Test Loss: %.6f",
+                epoch + 1,
+                self.params.epochs,
+                epoch_timer,
+                train_loss,
+                test_loss,
             )
+
             print(
                 f"Epoch: {epoch+1}/{self.params.epochs} \t"
                 f"Took: {epoch_timer:.2f} \t"
@@ -248,10 +301,10 @@ class Trainer(object):
                 torch.save(
                     self.model, f"results/{self.params.path}/models/{self.params.NN}"
                 )
-        except:
-            logger.error("Failed to save model")
+        except Exception as e:
+            logger.error(f"Failed to save model: {e}")
 
-    def plot(self, timeData, prediction, input, truth, rePred, mass, savename=""):
+    def plot(self, time_data, prediction, in_data, truth, roll, mass, savename=""):
         """
         Plot the prediction
         Input:
@@ -266,10 +319,10 @@ class Trainer(object):
         logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
         ############ RMSE ############
-        num_Dims = len(prediction.shape)
+        num_dims = len(prediction.shape)
         num_samples = prediction.shape[0]
         ind = -1
-        if num_Dims == 5:
+        if num_dims == 5:
             # find which dimension is dN//2
             for i in range(1, len(prediction.shape)):
                 if prediction.shape[i] == self.params.d:
@@ -284,7 +337,7 @@ class Trainer(object):
             ind = 0
             gif_save = f"{self.plot_path}/All_valid"
             # create an animation of the density and velocity data
-            plot_input = input.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            plot_input = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             plot_input = plot_input.flatten(0, 1)
             plot_truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             plot_truth = plot_truth.flatten(0, 1)
@@ -292,13 +345,13 @@ class Trainer(object):
                 0, ind_tim, ind_grid, ind_grid + 1, ind_dim
             )
             plot_prediction = plot_prediction.flatten(0, 1)
-            plot_rePred = rePred.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            plot_rePred = plot_rePred.flatten(0, 1)
+            plot_roll = roll.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            plot_roll = plot_roll.flatten(0, 1)
 
-            create_animation(plot_input, timeData, f"{gif_save}_in", mass, fps=5)
-            create_animation(plot_truth, timeData, f"{gif_save}_tru", mass, fps=5)
-            create_animation(plot_prediction, timeData, f"{gif_save}_out", mass, fps=5)
-            create_animation(plot_rePred, timeData, f"{gif_save}_roll", mass, fps=5)
+            createAnimation(plot_input, time_data, f"{gif_save}_in", mass, fps=5)
+            createAnimation(plot_truth, time_data, f"{gif_save}_tru", mass, fps=5)
+            createAnimation(plot_prediction, time_data, f"{gif_save}_out", mass, fps=5)
+            createAnimation(plot_roll, time_data, f"{gif_save}_roll", mass, fps=5)
 
             # reduce the data to only that indices for ind_dim and ind_tim
             prediction = prediction.index_select(ind_dim, torch.tensor(ind))
@@ -311,54 +364,52 @@ class Trainer(object):
             truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             truth = truth.squeeze().flatten(0, 1)
 
-            input = input.index_select(ind_dim, torch.tensor(ind))
-            input = input.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            input = input.squeeze().flatten(0, 1)
+            in_data = in_data.index_select(ind_dim, torch.tensor(ind))
+            in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            in_data = in_data.squeeze().flatten(0, 1)
             # input = input.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
 
             # and (n,x,y,t) flatten to (t*n, x, y)
-            num_Dims = len(prediction.shape)
-        elif num_Dims == 4:
+            num_dims = len(prediction.shape)
+        elif num_dims == 4:
             prediction = prediction.squeeze().flatten(0, 1)
             truth = truth.squeeze().flatten(0, 1)
-            input = input.squeeze().flatten(0, 1)
-            num_Dims = len(prediction.shape)
+            in_data = in_data.squeeze().flatten(0, 1)
+            num_dims = len(prediction.shape)
 
-        dims_to_rmse = tuple(range(-num_Dims + 1, 0))
+        dims_to_rmse = tuple(range(-num_dims + 1, 0))
 
         # compute RMSE
         rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=dims_to_rmse))
         # normalize RMSE
         rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
         # compute RMSE for each time step
-        relativeRMSE = torch.sqrt(torch.mean((input - truth) ** 2, dim=dims_to_rmse))
+        relative_rmse = torch.sqrt(torch.mean((in_data - truth) ** 2, dim=dims_to_rmse))
         # normalize RMSE
-        relativeRMSE /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
-        import matplotlib.pyplot as plt
-        import seaborn as sns
+        relative_rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
 
         # set the style
         sns.set_style("darkgrid")
         # plot RMSE for each time step
-        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-        ax.plot(
-            timeData[: 3 * num_samples],
+        fig, axis = plt.subplots(1, 1, figsize=(10, 10))
+        axis.plot(
+            time_data[: 3 * num_samples],
             rmse[: 3 * num_samples],
             ".",
             label="Neural RMSE",
         )
-        ax.plot(
-            timeData[: 3 * num_samples],
-            relativeRMSE[: 3 * num_samples],
+        axis.plot(
+            time_data[: 3 * num_samples],
+            relative_rmse[: 3 * num_samples],
             ".",
             label="RMSE between time steps",
         )
-        ax.set_xlabel("Time (Myr)")
-        ax.set_ylabel("Normalized  RMSE")
-        ax.set_title(f"RMSE Over Time for index {ind}, t_0 {timeData[0]}")
-        ax.legend()
-        im = wandb.Image(fig)
-        wandb.log({"RMSE": im})
+        axis.set_xlabel("Time (Myr)")
+        axis.set_ylabel("Normalized  RMSE")
+        axis.set_title(f"RMSE Over Time for index {ind}, t_0 {time_data[0]}")
+        axis.legend()
+        img = wandb.Image(fig)
+        wandb.log({"RMSE": img})
         if len(savename) > 0:
             fig.savefig(f"{self.plot_path}/{savename}_RMSE.png")
         plt.close(fig)
@@ -372,10 +423,14 @@ class Trainer(object):
         savename: str = "",
     ) -> None:
         """
-        Evaluate the model
-        Input:
-            data_loader: torch.utils.data.DataLoader
-        Output:
+        Evaluates the model on the given data_loader and saves the results to a .mat file.
+        Args:
+            data_loader (torch.utils.data.DataLoader): The data loader to evaluate the model on.
+            input_encoder (optional): The input encoder to use. Defaults to None.
+            output_encoder (optional): The output encoder to use. Defaults to None.
+            savename (str, optional): The name to use when saving the results to a .mat file.
+                                      Defaults to "".
+        Returns:
             None
         """
         # TODO: TEST THIS FUNCTION
@@ -389,47 +444,47 @@ class Trainer(object):
 
         size = [num_samples] + [d for d in data.shape if d != 1]
         pred = torch.zeros(size)
-        rePred = torch.zeros(size)
-        input = torch.zeros(size)
+        roll = torch.zeros(size)
+        in_data = torch.zeros(size)
         truth = torch.zeros(size)
         test_loss = 0
         re_loss = 0
         rand_point = np.random.randint(0, len(data_loader))
         mass = "null"
         mass_list = []
-        timeData = torch.zeros(num_samples, lentime)
+        time_data = torch.zeros(num_samples, lentime)
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
                 meta_data = sample["meta_x"]
                 cur_mass = meta_data["mass"][0]
-                timeData[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
+                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
                 # apply the input encoder
                 output = self.model(data)
                 # apply the model to previous output
                 if batchidx == 0 or cur_mass != mass:
-                    reData = output.clone()
+                    roll_batch = output.clone()
                     logging.info(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
                 elif batchidx > 0:
                     if input_encoder is not None:
                         logger.debug("Encoding reData")
-                        reData = input_encoder.encode(reData)
+                        roll_batch = input_encoder.encode(roll_batch)
                     # apply the model to previous output
-                    reData = self.model(reData)
+                    roll_batch = self.model(roll_batch)
 
                 if batchidx == rand_point:
                     save_plot = f"{self.plot_path}/Valid_"
                     idx = 0
-                    data_visible_check(data, sample["meta_x"], f"{save_plot}input", idx)
-                    data_visible_check(
+                    dataVisibleCheck(data, sample["meta_x"], f"{save_plot}input", idx)
+                    dataVisibleCheck(
                         target, sample["meta_y"], f"{save_plot}target", idx
                     )
-                    data_visible_check(
+                    dataVisibleCheck(
                         output, sample["meta_y"], f"{save_plot}output", idx
                     )
-                    data_visible_check(
-                        reData, sample["meta_y"], f"{save_plot}rolling", idx
+                    dataVisibleCheck(
+                        roll_batch, sample["meta_y"], f"{save_plot}rolling", idx
                     )
 
                 # decode  if there is an output encoder
@@ -438,9 +493,9 @@ class Trainer(object):
                     # decode the output
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
-                    reData = output_encoder.decode(reData)
+                    roll_batch = output_encoder.decode(roll_batch)
                 # compute the loss
-                re_loss += self.loss(reData, target).item()
+                re_loss += self.loss(roll_batch, target).item()
                 test_loss += self.loss(output, target).item()
 
                 if input_encoder is not None:
@@ -448,9 +503,9 @@ class Trainer(object):
 
                 # assign the values to the tensors
                 pred[batchidx] = output
-                input[batchidx] = data
+                in_data[batchidx] = data
                 truth[batchidx] = target
-                rePred[batchidx] = reData
+                roll[batchidx] = roll_batch
 
                 mass_list = mass_list + [cur_mass] * lentime
             # normalize test loss
@@ -458,14 +513,14 @@ class Trainer(object):
             re_loss /= len(data_loader.dataset)
             print(f"Length of Valid Data: {len(data_loader.dataset)}")
             # print the final loss
-            numTrained = self.params.N * self.params.split[0]
-            print(f"Final Loss for {int(numTrained)}: {test_loss} ")
+            num_trained = self.params.N * self.params.split[0]
+            print(f"Final Loss for {int(num_trained)}: {test_loss} ")
             wandb.log({"Valid Loss": test_loss, "Reapply Loss": re_loss})
         print(
             f"Saving data as {os.getcwd()} results/{self.params.path}/data/{savename}.mat"
         )
         # flatten the time for plotting
-        timeData = timeData.flatten()
+        time_data = time_data.flatten()
 
         if len(savename) > 0:
             print(
@@ -474,19 +529,19 @@ class Trainer(object):
             scipy.io.savemat(
                 f"results/{self.params.path}/data/{savename}.mat",
                 mdict={
-                    "input": input.cpu().numpy(),
+                    "input": in_data.cpu().numpy(),
                     "pred": pred.cpu().numpy(),
                     "target": truth.cpu().numpy(),
-                    "rePred": rePred.cpu().numpy(),
+                    "rePred": roll.cpu().numpy(),
                 },
             )
         if self.params.doPlot:
             self.plot(
-                timeData=timeData,
+                time_data=time_data,
                 prediction=pred,
-                input=input,
+                in_data=in_data,
                 truth=truth,
-                rePred=rePred,
+                roll=roll,
                 mass=mass_list,
                 savename=savename,
             )
