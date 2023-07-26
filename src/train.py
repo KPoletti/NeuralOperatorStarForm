@@ -18,6 +18,29 @@ logging.getLogger("wandb").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
+class NormalizedMSE:
+    """Computes the normalized MSE loss for a given input tensors x and y.
+
+    Args:
+        object (_type_) : The object type.
+    """
+
+    def __init__(self, reduction: str = "mean") -> None:
+        self.reduction = reduction
+        self.mse = nn.MSELoss(reduction=self.reduction)
+
+    def __call__(self, x, y) -> float:
+        """
+        Args:
+            x (torch.Tensor): The input tensor to compute the loss for.
+            y (torch.Tensor): The target tensor to compute the loss for.
+        Returns:
+            float: The normalized MSE loss for the given input and target tensors.
+        """
+        # compute the loss
+        return self.mse(x, y) / torch.mean(y)
+
+
 def data_visible_check(data: torch.tensor, meta: dict, save: str, idx):
     """
     Creates a mp4 of a random batch of the data to check if the data is visible
@@ -160,7 +183,7 @@ class Trainer(object):
         # define a test loss function that will be the same regardless of training
         if sweep:
             # use RMSE
-            test_loss_fn = nn.MSELoss(reduction="mean")
+            test_loss_fn = NormalizedMSE(reduction="mean")
         else:
             test_loss_fn = self.loss
 
