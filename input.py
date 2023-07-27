@@ -165,7 +165,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "CNL2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+NN = "FNO3d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
 
 skip_type = "identity"  # "identity", "linear" or "softgate"
 if NN == "MNO":

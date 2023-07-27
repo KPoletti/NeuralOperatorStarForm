@@ -5,6 +5,7 @@ Functions include data splitting, average pooling, and log10 normalization.
 import logging
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 from neuralop.utils import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
@@ -292,10 +293,17 @@ class MultiVariableNormalizer:
     def __init__(self, data, verbose):
         super().__init__()
         self.data = data
-        self.rho = data
+        self.shape = torch.tensor(data.shape)
         logger.debug("Encoder Data Shape: %s", data.shape)
-        self.rho_encoder = UnitGaussianNormalizer(data[..., 0], verbose=verbose)
-        self.vel_encoder = UnitGaussianNormalizer(data[..., 1:], verbose=verbose)
+        self.index = int([i for i, x in enumerate(self.shape) if x == 3][0])
+        self.vel_index = torch.tensor([1, 2])
+        self.rho_index = torch.tensor([0])
+        self.rho_encoder = UnitGaussianNormalizer(
+            data.index_select(self.index, self.rho_index), verbose=verbose
+        )
+        self.vel_encoder = UnitGaussianNormalizer(
+            data.index_select(self.index, self.vel_index), verbose=verbose
+        )
 
     def encode(self, data):
         """
@@ -305,11 +313,11 @@ class MultiVariableNormalizer:
         Output:
             data: torch.tensor encoded data
         """
-        rho = self.rho_encoder.encode(data[..., 0])
-        vel = self.vel_encoder.encode(data[..., 1:])
-        data[..., 0] = rho
-        data[..., 1:] = vel
-        return data
+        rho = self.rho_encoder.encode(data.index_select(self.index, self.rho_index))
+        vel = self.vel_encoder.encode(data.index_select(self.index, self.vel_index))
+        # data[..., 0] = rho
+        # data[..., 1:] = vel
+        return torch.cat((rho, vel), dim=self.index)
 
     def decode(self, data):
         """
@@ -319,11 +327,11 @@ class MultiVariableNormalizer:
         Output:
             data: torch.tensor decoded data
         """
-        rho = self.rho_encoder.decode(data[..., 0])
-        vel = self.vel_encoder.decode(data[..., 1:])
-        data[..., 0] = rho
-        data[..., 1:] = vel
-        return data
+        rho = self.rho_encoder.decode(data.index_select(self.index, self.rho_index))
+        vel = self.vel_encoder.decode(data.index_select(self.index, self.vel_index))
+        # data[..., 0] = rho
+        # data[..., 1:] = vel
+        return torch.cat((rho, vel), dim=self.index)
 
     def cuda(self):
         """
@@ -331,6 +339,8 @@ class MultiVariableNormalizer:
         """
         self.rho_encoder.cuda()
         self.vel_encoder.cuda()
+        self.rho_index = self.rho_index.cuda()
+        self.vel_index = self.vel_index.cuda()
         return self
 
     def cpu(self):
@@ -339,6 +349,8 @@ class MultiVariableNormalizer:
         """
         self.rho_encoder.cpu()
         self.vel_encoder.cpu()
+        self.rho_index = self.rho_index.cpu()
+        self.vel_index = self.vel_index.cpu()
         return self
 
     def to(self, device):
@@ -347,6 +359,8 @@ class MultiVariableNormalizer:
         """
         self.rho_encoder.to(device)
         self.vel_encoder.to(device)
+        self.rho_index = self.rho_index.to(device)
+        self.vel_index = self.vel_index.to(device)
         return self
 
 
