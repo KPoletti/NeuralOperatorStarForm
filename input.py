@@ -6,7 +6,7 @@ from src.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "Turb"  # NS-Caltech, StarForm, GravColl, GravInts or CATS
+data_name = "GravColl"  # NS-Caltech, StarForm, GravColl, GravInts or CATS
 
 log = False  # Option to take the log of the data
 encoder = True  # Option to use the encoder
@@ -59,8 +59,8 @@ elif data_name == "GravColl":
     output_channels = 5
     modes = 26  # star Form 20
     width = 32  # star Form 100
-    poolKernel = 2  # set to 0 to disable pooling
-    poolStride = 2  # set to 0 to disable pooling
+    poolKernel = 0  # set to 0 to disable pooling
+    poolStride = 0  # set to 0 to disable pooling
 
 elif data_name == "Turb":
     S = 128
@@ -70,13 +70,13 @@ elif data_name == "Turb":
     dN = 10
     mass = "ALL"
     # dt = 0.0204
-    extras = "_multiData"
+    extras = ""
 
     TRAIN_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.pt"
     TIME_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.h5"
     N = 29
     if mass == "ALL":
-        N = 902
+        N = 375
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
@@ -165,7 +165,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO3d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+NN = "CNL2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
 
 skip_type = "identity"  # "identity", "linear" or "softgate"
 if NN == "MNO":
@@ -183,9 +183,9 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 50
-lr = 0.0004446
-scheduler_step = 5
+epochs = 100
+lr = 0.004446
+scheduler_step = 25
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"

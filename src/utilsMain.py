@@ -293,6 +293,7 @@ class MultiVariableNormalizer:
         super().__init__()
         self.data = data
         self.rho = data
+        logger.debug("Encoder Data Shape: %s", data.shape)
         self.rho_encoder = UnitGaussianNormalizer(data[..., 0], verbose=verbose)
         self.vel_encoder = UnitGaussianNormalizer(data[..., 1:], verbose=verbose)
 
@@ -420,7 +421,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder: initialized input encoder
         output_encoder: initialized output encoder
     """
-    if "GravColl" in params.data_name:
+    if "GravColl" in params.data_name or "Turb" in params.data_name:
         input_encoder = MultiVariableNormalizer(data_a, verbose=verbosity)
         output_encoder = MultiVariableNormalizer(data_u, verbose=verbosity)
     else:
