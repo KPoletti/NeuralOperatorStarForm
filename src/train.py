@@ -17,7 +17,7 @@ import torch
 import wandb
 from torch import nn
 
-# from neuralop.training.losses import LpLoss, H1Loss
+from neuralop.training.losses import LpLoss, H1Loss
 
 
 logger = logging.getLogger(__name__)
@@ -233,7 +233,8 @@ class Trainer(object):
         # define a test loss function that will be the same regardless of training
         if sweep:
             # use RMSE
-            test_loss_fn = NormalizedMSE(reduction="mean")
+            # test_loss_fn = NormalizedMSE(reduction="mean")
+            test_loss_fn = loss_fn = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         else:
             test_loss_fn = self.loss
 

@@ -6,15 +6,18 @@ from src.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
-data_name = "GravColl"  # NS-Caltech, StarForm, GravColl, GravInts or CATS
+data_name = "Turb"  # NS-Caltech, StarForm, GravColl, GravInts or CATS
 
 log = False  # Option to take the log of the data
 encoder = True  # Option to use the encoder
-loss_name = "H1Loss"  # LpLoss, H1Loss
+loss_name = "LpLoss"  # LpLoss, H1Loss
 level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 saveNeuralNetwork = False  # Option to save the neural network
 doPlot = True  # Option to create plots
 use_mlp = True  # Option to use MLP
+preactivation = True  # Option to use ResNet Preactivation
+n_layers = 5
+mlp_dropout = 0.2
 # Pooling parameters
 poolKernel = 4  # set to 0 to disable pooling
 poolStride = 4  # set to 0 to disable pooling
@@ -66,7 +69,7 @@ elif data_name == "Turb":
     S = 128
     T = 5
     T_in = 5
-    DATA_PATH = "../dataToSend/TrainingData/Turb/"
+    DATA_PATH = "../dataToSend/TrainingData/TurbMore/"
     dN = 10
     mass = "ALL"
     # dt = 0.0204
@@ -76,12 +79,12 @@ elif data_name == "Turb":
     TIME_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.h5"
     N = 29
     if mass == "ALL":
-        N = 375
+        N = 1251
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
-    modes = 26  # star Form 20
-    width = 32  # star Form 100
+    modes = 16  # star Form 20
+    width = 64  # star Form 100
     poolKernel = 0  # set to 0 to disable pooling
     poolStride = 0  # set to 0 to disable pooling
 ##############################################
@@ -165,9 +168,9 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO3d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+NN = "CNL2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
 
-skip_type = "identity"  # "identity", "linear" or "softgate"
+skip_type = "soft-gating"  # "identity", "linear" or "soft-gating"
 if NN == "MNO":
     out_dim = 1
     dissloss = nn.MSELoss(reduction="mean")
@@ -184,8 +187,8 @@ if NN == "MNO":
 # Training parameters
 ##############################################
 epochs = 100
-lr = 0.004446
-scheduler_step = 25
+lr = 0.0004446
+scheduler_step = 10
 scheduler_gamma = 0.5
 batch_size = 10
 optimizer = "Adam"

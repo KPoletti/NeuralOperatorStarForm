@@ -82,7 +82,7 @@ def main(config=None):
         # create output folder
         path = (
             f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
-            f"_m{params.modes}_w{params.width}_S{params.S}"
+            f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
             f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
         )
 

@@ -38,9 +38,9 @@ def createAnimation(
     im2.set_clim(vmin=tmp[0, ..., 1].min(), vmax=tmp[0, ..., 1].max())
     im3.set_clim(vmin=tmp[0, ..., 2].min(), vmax=tmp[0, ..., 2].max())
     # add colorbar to each axis
-    fig.colorbar(im1, ax=axe[0], shrink=0.5)
-    fig.colorbar(im3, ax=axe[2], shrink=0.5)
-    fig.colorbar(im2, ax=axe[1], shrink=0.5)
+    fig.colorbar(im1, ax=axe[0], shrink=0.4)
+    fig.colorbar(im3, ax=axe[2], shrink=0.4)
+    fig.colorbar(im2, ax=axe[1], shrink=0.4)
 
     plt.tight_layout()
 

@@ -47,7 +47,9 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             in_channels=params.input_channels,
             out_channels=params.output_channels,
             use_mlp=params.use_mlp,
-            mlp={"expansion": 0.5, "dropout": 0},
+            mlp={"expansion": 0.5, "dropout": params.mlp_dropout},
+            preactivation=params.preactivation,
+            n_layers=params.n_layers,
             skip=params.skip_type,
         )
     elif params.NN == "FNO3d":
@@ -59,7 +61,9 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             in_channels=params.input_channels,
             out_channels=params.output_channels,
             use_mlp=params.use_mlp,
-            mlp={"expansion": 0.5, "dropout": 0},
+            mlp={"expansion": 0.5, "dropout": params.mlp_dropout},
+            preactivation=params.preactivation,
+            n_layers=params.n_layers,
             skip=params.skip_type,
         )
     elif params.NN == "MNO":
@@ -70,7 +74,9 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             in_channels=params.input_channels,
             out_channels=params.output_channels,
             use_mlp=params.use_mlp,
-            mlp={"expansion": 0.5, "dropout": 0},
+            mlp={"expansion": 0.5, "dropout": params.mlp_dropout},
+            preactivation=params.preactivation,
+            n_layers=params.n_layers,
             skip=params.skip_type,
         )
     elif params.NN == "CNL2d":
