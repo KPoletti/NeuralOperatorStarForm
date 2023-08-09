@@ -13,6 +13,7 @@ private/wandb_api_key.txt
 wandb/*
 *.yaml
 *.job
+*.err
 *Results*
 *.ipynb
 *job_file*

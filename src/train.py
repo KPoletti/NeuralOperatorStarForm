@@ -87,7 +87,12 @@ class Trainer(object):
     """
 
     def __init__(
-        self, model: nn.Module, params: dataclass, device: torch.device
+        self,
+        model: nn.Module,
+        params: dataclass,
+        device: torch.device,
+        ckp_path: str = "",
+        save_every: int = 1,
     ) -> None:
         """
         Initializes a Trainer object.
@@ -103,13 +108,21 @@ class Trainer(object):
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=params.lr, weight_decay=1e-4
         )
-        self.scheduler = torch.optim.lr_scheduler.StepLR(
-            self.optimizer,
-            step_size=params.scheduler_step,
-            gamma=params.scheduler_gamma,
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(
+        #     self.optimizer,
+        #     step_size=params.scheduler_step,
+        #     gamma=params.scheduler_gamma,
+        # )
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=params.scheduler_step
         )
         self.loss = params.loss_fn
         self.plot_path = f"results/{self.params.path}/plots"
+        self.save_every = save_every
+        self.epochs_run = 0
+        self.ckp_path = ckp_path
+        if os.path.exists(self.ckp_path) and params.use_ddp:
+            self._load_snapshot(self.ckp_path)
 
     def dissipativeRegularizer(
         self, data: torch.Tensor, device: torch.device
@@ -174,7 +187,7 @@ class Trainer(object):
                 logger.debug(f"Input Meta Data: {sample['meta_x']}")
                 logger.debug(f"Output Meta Data: {sample['meta_y']}")
 
-            if batch_idx == rand_point and epoch == 53:
+            if batch_idx == rand_point and epoch == self.save_every:
                 savename = f"{self.plot_path}/Train_"
                 idx = np.random.randint(0, data.shape[0] - 1)
                 dataVisibleCheck(data, sample["meta_x"], f"{savename}input", idx)
@@ -188,7 +201,7 @@ class Trainer(object):
                 # decode the output
                 output = output_encoder.decode(output)
 
-            if batch_idx == rand_point and epoch == 53:
+            if batch_idx == rand_point and epoch == self.save_every:
                 savename = f"{self.plot_path}/Train_decoded_"
                 dataVisibleCheck(data, sample["meta_x"], f"{savename}input", idx)
                 dataVisibleCheck(target, sample["meta_y"], f"{savename}target", idx)
@@ -213,6 +226,24 @@ class Trainer(object):
 
         return train_loss, loss
 
+    def _save_checkpoint(self, epoch):
+        ckp = self.model.module.state_dict()
+        torch.save(ckp, "checkpoint.pt")
+        print(f"Epoch {epoch} | Training checkpoint saved.")
+
+    def _save_snapshot(self, epoch):
+        snapshot = {}
+        snapshot["MODEL_STATE"] = self.model.module.state_dict()
+        snapshot["EPOCHS_RUN"] = epoch
+        torch.save(snapshot, self.ckp_path)
+        print(f"Epoch {epoch} | Training snapshot saved at snapshot.pt")
+
+    def _load_snapshot(self, snapshot_path):
+        snapshot = torch.load(snapshot_path)
+        self.model.load_state_dict(snapshot["MODEL_STATE"])
+        self.epochs_run = snapshot["EPOCHS_RUN"]
+        print(f"Resuming training from snapshot at Epoch {self.epochs_run}")
+
     def train(
         self,
         train_loader: torch.utils.data.DataLoader,
@@ -232,21 +263,27 @@ class Trainer(object):
         self.loss = self.params.loss_fn
         # define a test loss function that will be the same regardless of training
         if sweep:
-            # use RMSE
-            # test_loss_fn = NormalizedMSE(reduction="mean")
-            test_loss_fn = loss_fn = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
+            # use Mean L2 Loss
+            test_loss_fn = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         else:
             test_loss_fn = self.loss
 
         logger.debug(f"len(test_loader.dataset) = {len(test_loader.dataset)}")
         logger.debug(f"len(train_loader.dataset) = {len(train_loader.dataset)}")
         # start training
-        for epoch in range(self.params.epochs):
+        for epoch in range(self.epochs_run, self.params.epochs):
             epoch_timer = time.time()
 
             # set to train mode
             self.model.train()
             train_loss, _ = self.batchLoop(train_loader, output_encoder, epoch)
+
+            if (
+                self.params.use_ddp
+                and self.device == 0
+                and epoch % self.save_every == 0
+            ):
+                self._save_snapshot(epoch)
 
             self.model.eval()
             test_loss = 0
@@ -474,6 +511,13 @@ class Trainer(object):
                     # apply the model to previous output
                     roll_batch = self.model(roll_batch)
 
+                # decode  if there is an output encoder
+                if output_encoder is not None:
+                    logger.debug("Decoding data")
+                    # decode the output
+                    output = output_encoder.decode(output)
+                    # decode the multiple applications of the model
+                    roll_batch = output_encoder.decode(roll_batch)
                 if batchidx == rand_point:
                     save_plot = f"{self.plot_path}/Valid_"
                     idx = 0
@@ -488,13 +532,6 @@ class Trainer(object):
                         roll_batch, sample["meta_y"], f"{save_plot}rolling", idx
                     )
 
-                # decode  if there is an output encoder
-                if output_encoder is not None:
-                    logger.debug("Decoding data")
-                    # decode the output
-                    output = output_encoder.decode(output)
-                    # decode the multiple applications of the model
-                    roll_batch = output_encoder.decode(roll_batch)
                 # compute the loss
                 re_loss += self.loss(roll_batch, target).item()
                 test_loss += self.loss(output, target).item()

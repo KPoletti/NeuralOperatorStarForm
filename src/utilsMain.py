@@ -11,6 +11,7 @@ from neuralop.utils import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
 
 import torch
+from torch.utils.data.distributed import DistributedSampler
 import wandb
 
 # initialize logger
@@ -136,7 +137,9 @@ def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
     Output:
         data: torch.tensor data after reduction
     """
-    if "GravColl" in params.data_name and "FNO2d" in params.NN:
+    # if "GravColl" in params.data_name and "FNO2d" in params.NN:
+    if "FNO2d" in params.NN:
+        
         return data[..., 0, :]
     return data
 
@@ -391,7 +394,7 @@ def permuteFNO2d(
     Returns:
         torch.tensor: permuted data
     """
-    data = data.reshape(size, gridsize, gridsize, params.T_in)
+    # data = data.reshape(size, gridsize, gridsize, params.T_in)
     data = data.permute(0, 3, 1, 2)
     return data
 
@@ -435,7 +438,10 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder: initialized input encoder
         output_encoder: initialized output encoder
     """
-    if "GravColl" in params.data_name or "Turb" in params.data_name:
+    if "FNO2d" in params.NN:
+        input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
+        output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
+    elif "GravColl" in params.data_name or "Turb" in params.data_name:
         input_encoder = MultiVariableNormalizer(data_a, verbose=verbosity)
         output_encoder = MultiVariableNormalizer(data_u, verbose=verbosity)
     else:
@@ -550,19 +556,38 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         dfTolist(valid_time_a),
         dfTolist(valid_time_u),
     )
+    shuffle_type = True
+    train_sampler = None
+    test_sampler = None
+    if params.use_ddp:
+        shuffle_type = False
+        train_sampler = DistributedSampler(train_dataset)
+        test_sampler = DistributedSampler(tests_dataset)
     # Create the data loader
     # TODO: Fix the batch size for the tests and valid loaders
     # On gravcoll, for (15, 10, 200, 200 ,3) the test loss will grow if validSize =0
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=params.batch_size, shuffle=True, drop_last=True
+        train_dataset,
+        batch_size=params.batch_size,
+        shuffle=shuffle_type,
+        sampler=train_sampler,
+        drop_last=True,
     )
     if tests_size >= params.batch_size * 2:
         test_loader = torch.utils.data.DataLoader(
-            tests_dataset, batch_size=params.batch_size, shuffle=False, drop_last=True
+            tests_dataset,
+            batch_size=params.batch_size,
+            shuffle=False,
+            sampler=test_sampler,
+            drop_last=True,
         )
     else:
         test_loader = torch.utils.data.DataLoader(
-            tests_dataset, batch_size=1, shuffle=False, drop_last=True
+            tests_dataset,
+            batch_size=1,
+            shuffle=False,
+            sampler=test_sampler,
+            drop_last=True,
         )
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=1, shuffle=False, drop_last=True

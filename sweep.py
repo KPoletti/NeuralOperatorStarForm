@@ -62,6 +62,7 @@ def set_Loss(params):
     from neuralop.training.losses import LpLoss, H1Loss
 
     if params.loss_name == "LpLoss":
+        
         return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
         return H1Loss(d=params.d, reduce_dims=(0, 1))
@@ -86,13 +87,10 @@ def main(config=None):
             f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
         )
 
-        # add the path to params
-        params.path = path
-        # define the loss function
-        params.loss_fn = set_Loss(params)
+        
         # Print the parameters
         paramsJSON = convertParamsToJSON(params)
-        print(json.dumps(paramsJSON, indent=4, sort_keys=True))
+        # print(json.dumps(paramsJSON, indent=4, sort_keys=True))
 
         # check if path exists
         if not os.path.exists(f"results/{path}"):
@@ -113,6 +111,11 @@ def main(config=None):
         logging.getLogger("wandb").setLevel(logging.WARNING)
         logger.info(f"Output folder for {path}")
 
+        # add the path to params
+        params.path = path
+        # define the loss function
+        params.loss_fn = set_Loss(params)
+        logger.info("Setting Loss function to %s with dim %s",params.loss_fn, params.d)
         ################################################################
         # load data
         ################################################################
@@ -137,7 +140,7 @@ def main(config=None):
         netTime = time.time()
         # create neural network
         model = myNet.initializeNetwork(params)
-        params.batch_size = torch.cuda.device_count() * params.batch_size
+        # params.batch_size = torch.cuda.device_count() * params.batch_size
         model = model.to(device)
         if params.encoder:
             output_encoder.cuda()

@@ -7,9 +7,11 @@ import time
 import numpy as np
 import src.networkUtils as myNet
 import src.train as myTrain
-from src.utilsMain import prepareDataForTraining
-
 import torch
+import torch.distributed as dist
+from src.utilsMain import prepareDataForTraining
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 import wandb
 
 
@@ -57,8 +59,33 @@ def convertParamsToJSON(params):
 
 def main(params):
     ################################################################
+    # Distributed Setup
+    ################################################################
+    local_rank = int(os.environ["LOCAL_RANK"])
+    dist.init_process_group("nccl", init_method="env://")
+    torch.cuda.set_device(local_rank)
+    rank = dist.get_rank()
+    print(f"Start running basic DDP Neural Operator on rank {rank}.")
+    # initialize device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device_id = rank % torch.cuda.device_count()
+    print(f"Device_id {device_id}")
+
+    for r in range(dist.get_world_size()):
+        if r == dist.get_rank():
+            print(
+                f"Global rank {dist.get_rank()} initialized: "
+                f"local_rank = {local_rank}, "
+                f"world_size = {dist.get_world_size()}",
+            )
+        dist.barrier()
+    print(
+        f"Free: {torch.cuda.mem_get_info()[0] * 10**-9:1.3f} GiB\t Avail: {torch.cuda.mem_get_info()[1] * 10**-9:1.3f} GiB"
+    )
+    ################################################################
     # Wandb Setup
     ################################################################
+
     with open("private/wandb_api_key.txt") as f:
         wandb_api_key = f.readlines()[0]
     wandb.login(key=wandb_api_key)
@@ -79,13 +106,14 @@ def main(params):
     )
     params.path = path
     # check if path exists
+    time.sleep(local_rank * 0.1)
     if not os.path.exists(f"results/{path}"):
         os.makedirs(f"results/{path}")
         os.makedirs(f"results/{path}/logs")
         os.makedirs(f"results/{path}/models")
         os.makedirs(f"results/{path}/plots")
         os.makedirs(f"results/{path}/data")
-
+    params.lr = params.lr * dist.get_world_size()
     ################################################################
     # SET UP LOGGING
     ################################################################
@@ -114,8 +142,6 @@ def main(params):
         output_encoder,
     ) = prepareDataForTraining(params, params.S)
     logging.info(f"Data loaded in {time.time() - dataTime} seconds")
-    # initialize device
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     ################################################################
     # create neural network
@@ -124,26 +150,29 @@ def main(params):
     netTime = time.time()
     # create neural network
     model = myNet.initializeNetwork(params)
-    # params.batch_size = torch.cuda.device_count() * params.batch_size
-    model = model.to(device)
+    params.batch_size = torch.cuda.device_count() * params.batch_size
+    model = model.to(device_id)
+    DDP_model = DDP(model, device_ids=[device_id])
     if params.encoder:
         output_encoder.cuda()
         input_encoder.cuda()
     # log the model to debug
     logging.info(f"Neural network created in {time.time() - netTime} seconds")
-    
+
     ################################################################
     # train neural network
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
     Trainer = myTrain.Trainer(
-        model=model,
+        model=DDP_model,
         params=params,
-        device=device,
+        device=device_id,
+        save_every=50,
+        ckp_path=f"results/{params.path}/models/{params.NN}_snapshot.pt",
     )
     Trainer.train(trainLoader, testLoader, output_encoder)
-
+    os.remove(f"results/{params.path}/models/{params.NN}_snapshot.pt")
     ################################################################
     # test neural network
     ################################################################
@@ -155,8 +184,10 @@ def main(params):
         input_encoder=input_encoder,
         savename="ValidationData",
     )
+    dist.destroy_process_group()
+    wandb.finish()
     print(f"Output folder for {path}")
-    run.finish()
+    # run.finish()
 
 
 if __name__ == "__main__":

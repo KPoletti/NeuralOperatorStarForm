@@ -6,16 +6,18 @@ from src.dissipative_utils import (
 from neuralop.training.losses import LpLoss, H1Loss
 import math
 
+level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 data_name = "Turb"  # NS-Caltech, StarForm, GravColl, GravInts or CATS
+loss_name = "LpLoss"  # LpLoss, H1Loss
 
 log = False  # Option to take the log of the data
-encoder = True  # Option to use the encoder
-loss_name = "LpLoss"  # LpLoss, H1Loss
-level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-saveNeuralNetwork = False  # Option to save the neural network
 doPlot = True  # Option to create plots
 use_mlp = True  # Option to use MLP
+encoder = True  # Option to use the encoder
+use_ddp = False  # Option to use multi-gpu distributed data
 preactivation = True  # Option to use ResNet Preactivation
+saveNeuralNetwork = False  # Option to save the neural network
+
 n_layers = 5
 mlp_dropout = 0.2
 # Pooling parameters
@@ -28,12 +30,15 @@ if data_name == "NS-Caltech":
     DATA_PATH = "../dataToSend/CaltechData/"
     TRAIN_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.pt"
     TIME_PATH = f"{DATA_PATH}ns_V1e-3_N5000_T50.h5"
+
     S = 64
     N = 5000
-    input_channels = 10
-    output_channels = 10
+
     modes = 12  # star Form 20
     width = 24  # star Form 100
+    input_channels = 10
+    output_channels = 10
+
     T = 10
     T_in = 10
     poolKernel = 0  # set to 0 to disable pooling
@@ -66,27 +71,25 @@ elif data_name == "GravColl":
     poolStride = 0  # set to 0 to disable pooling
 
 elif data_name == "Turb":
-    S = 128
+    N = 7143
+    S = 64
+    dN = 10    
     T = 5
     T_in = 5
-    DATA_PATH = "../dataToSend/TrainingData/TurbMore/"
-    dN = 10
+    
     mass = "ALL"
-    # dt = 0.0204
     extras = ""
-
+    DATA_PATH = "../dataToSend/TrainingData/TurbProj/"
     TRAIN_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.pt"
     TIME_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.h5"
-    N = 29
-    if mass == "ALL":
-        N = 1251
     data_name = f"{data_name}{mass}_dN{dN}"
-    input_channels = 5
-    output_channels = 5
-    modes = 16  # star Form 20
+
+    modes = 32  # star Form 20
     width = 64  # star Form 100
     poolKernel = 0  # set to 0 to disable pooling
     poolStride = 0  # set to 0 to disable pooling
+    input_channels = 5
+    output_channels = 5
 ##############################################
 # For Grav Intensity
 ##############################################
@@ -186,12 +189,12 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-epochs = 100
-lr = 0.0004446
-scheduler_step = 10
-scheduler_gamma = 0.5
+lr = 0.00001
+epochs = 50
 batch_size = 10
 optimizer = "Adam"
+scheduler_step = 10
+scheduler_gamma = 0.5
 if NN == "FNO3d" or NN == "CNL2d":
     d = 3
 else:
