@@ -52,7 +52,7 @@ def dataVisibleCheck(data: torch.tensor, meta: dict, save: str, idx):
     """
     Creates a mp4 of a random batch of the data to check if the data is visible
     Inputs:
-        data: pytorch tensor of shape (batch, time, x, y, variable
+        data: pytorch tensor of shape (batch, time, x, y, variable)
         meta: dictionary of metadata
         save: directory to save the plots
     """
@@ -299,7 +299,7 @@ class Trainer(object):
                     if output_encoder is not None:
                         output = output_encoder.decode(output)
                         # do not decode the test target because the test data is not encode
-                    if batch_idx == rand_point and epoch == 53:
+                    if batch_idx == rand_point and epoch == self.save_every:
                         idx = np.random.randint(0, data.shape[0] - 1)
                         savename = f"{self.plot_path}/Test_decoded_"
                         dataVisibleCheck(
