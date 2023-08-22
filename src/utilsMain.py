@@ -5,7 +5,6 @@ Functions include data splitting, average pooling, and log10 normalization.
 import logging
 from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 from neuralop.utils import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
@@ -139,7 +138,6 @@ def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
     """
     # if "GravColl" in params.data_name and "FNO2d" in params.NN:
     if "FNO2d" in params.NN:
-        
         return data[..., 0, :]
     return data
 
@@ -286,7 +284,8 @@ def dfTolist(frame: pd.DataFrame) -> list:
 
 class MultiVariableNormalizer:
     """
-    Normalize the data by the mean and standard deviation for velocity and density separately
+    Normalize the data by the mean and standard deviation for velocity and density
+    separately
     Input:
         data: torch.tensor data to normalize
     Output:

@@ -9,11 +9,12 @@ from torch.utils.data.dataset import Dataset
 
 class TensorDataset(Dataset):
     """
-    A PyTorch Dataset class that represents a dataset consisting of input and output tensors, along
-    with optional metadata for each tensor. This class inherits from the PyTorch Dataset class.
+    A PyTorch Dataset class that represents a dataset consisting of input and output
+    tensors, along with optional metadata for each tensor. This class inherits from the
+    PyTorch Dataset class.
 
     Args:
-    - Dataset (torch.utils.data.Dataset): PyTorch Dataset class that this class inherits from
+    - Dataset (torch.utils.data.Dataset): PyTorch Dataset class that this class inherits
     """
 
     def __init__(
@@ -46,14 +47,15 @@ class TensorDataset(Dataset):
 
     def __getitem__(self, index):
         """
-        Returns a dictionary containing the input tensor, output tensor, and their respective
-        metadata.
+        Returns a dictionary containing the input tensor, output tensor, and their
+        respective metadata.
 
         Args:
         - index (int): index of the data point to retrieve
 
         Returns:
-        - dict: dictionary containing the input tensor, output tensor, and their respective metadata
+        - dict: dictionary containing the input tensor, output tensor, and their
+        respective metadata
         """
         tensor_x = self.x[index]
         tensor_y = self.y[index]

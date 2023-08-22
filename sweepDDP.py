@@ -2,7 +2,6 @@
 File for hyperparameter tuning with wandb sweep
 """
 
-import argparse
 import json
 import logging
 import os
@@ -82,15 +81,15 @@ def main(config=None):
     rank = dist.get_rank()
     print(f"Start running basic DDP example on rank {rank}.")
     # initialize device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device_id = rank % torch.cuda.device_count()
     print(f"Device_id {device_id}")
     time.sleep(local_rank * 0.1)
     if local_rank == 0:
-        run = wandb.init(project=f"{params.data_name}", config=config)
+        wandb.init(project=f"{params.data_name}", config=config)
         config = wandb.config
         print(config)
-    else: 
+    else:
         config
     ################################################################
     # Distributed Setup
@@ -107,7 +106,7 @@ def main(config=None):
     print(
         f"Free: {torch.cuda.mem_get_info()[0] * 10**-9:1.3f} GiB\t Avail: {torch.cuda.mem_get_info()[1] * 10**-9:1.3f} GiB"
     )
-    
+
     # reset values based on sweep
     # TODO: make this more general
     for attr in config.keys():
@@ -125,7 +124,7 @@ def main(config=None):
     # define the loss function
     params.loss_fn = set_Loss(params)
     # Print the parameters
-    paramsJSON = convertParamsToJSON(params)
+    convertParamsToJSON(params)
     # print(json.dumps(paramsJSON, indent=4, sort_keys=True))
 
     # check if path exists
@@ -163,7 +162,7 @@ def main(config=None):
     ) = prepareDataForTraining(params, params.S)
     logger.info(f"Data loaded in {time.time() - dataTime} seconds")
     # initialize device
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     ################################################################
     # create neural network
@@ -174,7 +173,7 @@ def main(config=None):
     model = myNet.initializeNetwork(params)
     params.batch_size = torch.cuda.device_count() * params.batch_size
     model = model.to(device_id)
-    DDP_model = DDP(model, device_ids=[device_id])
+    DDP(model, device_ids=[device_id])
 
     if params.encoder:
         output_encoder.cuda()

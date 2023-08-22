@@ -73,10 +73,10 @@ elif data_name == "GravColl":
 elif data_name == "Turb":
     N = 7143
     S = 64
-    dN = 10    
+    dN = 10
     T = 5
     T_in = 5
-    
+
     mass = "ALL"
     extras = ""
     DATA_PATH = "../dataToSend/TrainingData/TurbProj/"

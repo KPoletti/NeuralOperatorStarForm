@@ -45,7 +45,7 @@ def sigmoid_partition_unity(norm_of_x, shift, scale):
 
 def linear_scale_dissipative_target(inputs, scale):
     """
-    Dissipative functions - input is point x in state space (practically, subset of R^n).
+    Dissipative functions - input is point x in state space (practically, subset of R^n)
 
     Args:
         inputs (torch.Tensor): Input point in state space.
@@ -71,8 +71,6 @@ def part_unity_post_process(x, model, rho, diss):
     Returns:
         torch.Tensor: Output of the post-processing function.
     """
-    return rho(torch.norm(x)) * model(x).reshape(
-        x.shape[0],
-    ) + (
+    return rho(torch.norm(x)) * model(x).reshape(x.shape[0],) + (
         1 - rho(x)
     ) * diss(x)

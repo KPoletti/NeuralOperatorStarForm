@@ -131,7 +131,7 @@ def main(params):
         input_encoder.cuda()
     # log the model to debug
     logging.info(f"Neural network created in {time.time() - netTime} seconds")
-    
+
     ################################################################
     # train neural network
     ################################################################

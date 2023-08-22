@@ -78,7 +78,7 @@ def main():
         "loss_name": {"values": ["LpLoss", "H1Loss"]},
     }
     # create a list of the sweep parameters
-    sweep_params_list = list(sweep_params.keys())
+    list(sweep_params.keys())
     # loop over paramsDict and to sweep params if they are not in sweep_params
     for key, value in paramsDict.items():
         if key not in sweep_params.keys():

@@ -67,7 +67,7 @@ def main(params):
     rank = dist.get_rank()
     print(f"Start running basic DDP Neural Operator on rank {rank}.")
     # initialize device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device_id = rank % torch.cuda.device_count()
     print(f"Device_id {device_id}")
 
@@ -91,7 +91,7 @@ def main(params):
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
-    run = wandb.init(project=params.data_name, config=paramsJSON)
+    wandb.init(project=params.data_name, config=paramsJSON)
 
     ################################################################
     # PATH

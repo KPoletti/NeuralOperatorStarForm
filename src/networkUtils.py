@@ -1,6 +1,6 @@
 """
-This module contains utility functions for defining and initializing neural networks used in the 
-Neural Operator StarForm project.
+This module contains utility functions for defining and initializing neural networks 
+used in the Neural Operator StarForm project.
 
 Functions:
     initializeNetwork(params: dataclass) -> nn.Module:

@@ -8,7 +8,6 @@ import torch
 import numpy as np
 import src.networkUtils as myNet
 import src.train as myTrain
-import argparse
 import logging
 import time
 import wandb
@@ -62,7 +61,7 @@ def set_Loss(params):
     from neuralop.training.losses import LpLoss, H1Loss
 
     if params.loss_name == "LpLoss":
-        
+
         return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
         return H1Loss(d=params.d, reduce_dims=(0, 1))
@@ -87,9 +86,8 @@ def main(config=None):
             f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
         )
 
-        
         # Print the parameters
-        paramsJSON = convertParamsToJSON(params)
+        convertParamsToJSON(params)
         # print(json.dumps(paramsJSON, indent=4, sort_keys=True))
 
         # check if path exists
@@ -115,7 +113,7 @@ def main(config=None):
         params.path = path
         # define the loss function
         params.loss_fn = set_Loss(params)
-        logger.info("Setting Loss function to %s with dim %s",params.loss_fn, params.d)
+        logger.info("Setting Loss function to %s with dim %s", params.loss_fn, params.d)
         ################################################################
         # load data
         ################################################################
