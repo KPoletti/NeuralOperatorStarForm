@@ -106,19 +106,19 @@ class Trainer(object):
         self.params = params
         self.device = device
         self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=params.lr, weight_decay=1e-4
+            self.model.parameters(), lr=params.lr, weight_decay=1e-3
         )
-        self.scheduler1 = torch.optim.lr_scheduler.StepLR(
-            self.optimizer,
-            step_size=params.scheduler_step,
-            gamma=params.scheduler_gamma,
-        )
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #     self.optimizer, T_max=params.scheduler_step
+        # self.scheduler1 = torch.optim.lr_scheduler.StepLR(
+        #     self.optimizer,
+        #     step_size=params.scheduler_step,
+        #     gamma=params.scheduler_gamma,
         # )
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            self.optimizer, T_0=params.cosine_step
-        )
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #     self.optimizer, T_max=params.cosine_step
+        # )
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        #     self.optimizer, T_0=params.cosine_step
+        # )
         self.loss = params.loss_fn
         self.plot_path = f"results/{self.params.path}/plots"
         self.save_every = save_every
@@ -226,7 +226,7 @@ class Trainer(object):
             self.optimizer.step()
             train_loss += loss.item()
             self.optimizer.zero_grad(set_to_none=True)
-            self.scheduler.step()
+            # self.scheduler.step()
 
         return train_loss, loss
 
@@ -319,7 +319,7 @@ class Trainer(object):
 
             test_loss /= len(test_loader.dataset)
             train_loss /= len(train_loader.dataset)
-            self.scheduler1.step()
+            # self.scheduler1.step()
 
             epoch_timer = time.time() - epoch_timer
             logger.info(
