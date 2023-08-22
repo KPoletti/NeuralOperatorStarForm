@@ -52,7 +52,7 @@ def dataVisibleCheck(data: torch.tensor, meta: dict, save: str, idx):
     """
     Creates a mp4 of a random batch of the data to check if the data is visible
     Inputs:
-        data: pytorch tensor of shape (batch, time, x, y, variable
+        data: pytorch tensor of shape (batch, time, x, y, variable)
         meta: dictionary of metadata
         save: directory to save the plots
     """
@@ -108,13 +108,16 @@ class Trainer(object):
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=params.lr, weight_decay=1e-4
         )
-        # self.scheduler = torch.optim.lr_scheduler.StepLR(
-        #     self.optimizer,
-        #     step_size=params.scheduler_step,
-        #     gamma=params.scheduler_gamma,
+        self.scheduler1 = torch.optim.lr_scheduler.StepLR(
+            self.optimizer,
+            step_size=params.scheduler_step,
+            gamma=params.scheduler_gamma,
+        )
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #     self.optimizer, T_max=params.scheduler_step
         # )
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=params.scheduler_step
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            self.optimizer, T_0=params.cosine_step
         )
         self.loss = params.loss_fn
         self.plot_path = f"results/{self.params.path}/plots"
@@ -223,6 +226,7 @@ class Trainer(object):
             self.optimizer.step()
             train_loss += loss.item()
             self.optimizer.zero_grad(set_to_none=True)
+            self.scheduler.step()
 
         return train_loss, loss
 
@@ -299,7 +303,7 @@ class Trainer(object):
                     if output_encoder is not None:
                         output = output_encoder.decode(output)
                         # do not decode the test target because the test data is not encode
-                    if batch_idx == rand_point and epoch == 53:
+                    if batch_idx == rand_point and epoch == self.save_every:
                         idx = np.random.randint(0, data.shape[0] - 1)
                         savename = f"{self.plot_path}/Test_decoded_"
                         dataVisibleCheck(
@@ -315,7 +319,7 @@ class Trainer(object):
 
             test_loss /= len(test_loader.dataset)
             train_loss /= len(train_loader.dataset)
-            self.scheduler.step()
+            self.scheduler1.step()
 
             epoch_timer = time.time() - epoch_timer
             logger.info(
@@ -331,7 +335,7 @@ class Trainer(object):
                 f"Epoch: {epoch+1}/{self.params.epochs} \t"
                 f"Took: {epoch_timer:.2f} \t"
                 f"Training Loss: {train_loss:.6f} \t"
-                f"Test Loss: {test_loss:.6f}"
+                f"Test Loss: {test_loss:.6f}\t"
             )
             wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
         try:

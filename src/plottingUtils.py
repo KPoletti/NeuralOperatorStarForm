@@ -65,7 +65,7 @@ def createAnimation(
         im1.set_data(tmp[i, ..., 0])
         im2.set_data(tmp[i, ..., 1])
         im3.set_data(tmp[i, ..., 2])
-        if i:
+        if i % 2 == 0:
             im1.set_clim(vmin=tmp[i, ..., 0].min(), vmax=tmp[i, ..., 0].max())
             im2.set_clim(vmin=tmp[i, ..., 1].min(), vmax=tmp[i, ..., 1].max())
             im3.set_clim(vmin=tmp[i, ..., 2].min(), vmax=tmp[i, ..., 2].max())

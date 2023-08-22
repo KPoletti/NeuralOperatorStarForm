@@ -93,7 +93,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             out_channels=params.output_channels,
             hidden_channels=params.width,
             activation=F.gelu,
-            norm=False,
+            norm=params.preactivation,
             rotation=False,
         )
     elif params.NN == "CNL3d":

@@ -137,11 +137,7 @@ def main(params):
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
-    Trainer = myTrain.Trainer(
-        model=model,
-        params=params,
-        device=device,
-    )
+    Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=20)
     Trainer.train(trainLoader, testLoader, output_encoder)
 
     ################################################################
