@@ -240,7 +240,7 @@ class Trainer(object):
         snapshot["MODEL_STATE"] = self.model.module.state_dict()
         snapshot["EPOCHS_RUN"] = epoch
         torch.save(snapshot, self.ckp_path)
-        print(f"Epoch {epoch} | Training snapshot saved at snapshot.pt")
+        print(f"Epoch {epoch} | Training snapshot saved at {self.ckp_path}")
 
     def _load_snapshot(self, snapshot_path):
         snapshot = torch.load(snapshot_path)
@@ -390,10 +390,12 @@ class Trainer(object):
             plot_roll = roll.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             plot_roll = plot_roll.flatten(0, 1)
 
-            createAnimation(plot_input, time_data, f"{gif_save}_in", mass, fps=5)
-            createAnimation(plot_truth, time_data, f"{gif_save}_tru", mass, fps=5)
-            createAnimation(plot_prediction, time_data, f"{gif_save}_out", mass, fps=5)
-            createAnimation(plot_roll, time_data, f"{gif_save}_roll", mass, fps=5)
+            createAnimation(plot_input[:150], time_data, f"{gif_save}_in", mass, fps=5)
+            createAnimation(plot_truth[:150], time_data, f"{gif_save}_tru", mass, fps=5)
+            createAnimation(
+                plot_prediction[:150], time_data, f"{gif_save}_out", mass, fps=5
+            )
+            createAnimation(plot_roll[:150], time_data, f"{gif_save}_roll", mass, fps=5)
 
             # reduce the data to only that indices for ind_dim and ind_tim
             prediction = prediction.index_select(ind_dim, torch.tensor(ind))
@@ -510,14 +512,12 @@ class Trainer(object):
                     mass = cur_mass
                 elif batchidx > 0:
                     if input_encoder is not None:
-                        logger.debug("Encoding reData")
                         roll_batch = input_encoder.encode(roll_batch)
                     # apply the model to previous output
                     roll_batch = self.model(roll_batch)
 
                 # decode  if there is an output encoder
                 if output_encoder is not None:
-                    logger.debug("Decoding data")
                     # decode the output
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model

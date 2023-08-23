@@ -168,11 +168,12 @@ def main(params):
         model=DDP_model,
         params=params,
         device=device_id,
-        save_every=50,
-        ckp_path=f"results/{params.path}/models/{params.NN}_snapshot.pt",
+        save_every=20,
+        ckp_path=f"results/{path}/models/{params.NN}_snapshot.pt",
     )
     Trainer.train(trainLoader, testLoader, output_encoder)
-    os.remove(f"results/{params.path}/models/{params.NN}_snapshot.pt")
+    if local_rank == 0:
+        os.remove(f"results/{params.path}/models/{params.NN}_snapshot.pt")
     ################################################################
     # test neural network
     ################################################################
