@@ -46,7 +46,7 @@ def dataSplit(params) -> tuple:
     return train_size, test_size, valid_size
 
 
-def averagePooling(data: torch.tensor, params: dataclass) -> torch.tensor:
+def averagePooling(data: torch.Tensor, params: dataclass) -> torch.Tensor:
     """
     Average pool the data to reduce the size of the image
     Input:
@@ -197,7 +197,7 @@ def loadData(params: dataclass, is_data: bool) -> tuple:
     return full_data
 
 
-def trainTestValidSplit(params: dataclass, data: torch.tensor) -> tuple:
+def trainTestValidSplit(params: dataclass, data: torch.Tensor) -> tuple:
     """
     Break the data into training, testing, and validation sets
     Input:
@@ -213,6 +213,14 @@ def trainTestValidSplit(params: dataclass, data: torch.tensor) -> tuple:
             2 corresponds to the density at time t and t+1
     """
     train_size, test_size, valid_size = dataSplit(params)
+    # check if sizes exceed total size.
+    if train_size + test_size + valid_size > data.shape[0]:
+        print("WARNING: Given N is larger than the number of data points.")
+        print("Defaulting to number of data point.")
+        N = data.shape[0]
+        train_size = int(N * params.split[0])
+        test_size = int(N * params.split[1])
+        valid_size = int(N * params.split[2]) - 1
     # load data
     train_data = data[:train_size]
     test_data = data[train_size : train_size + test_size]
@@ -221,7 +229,7 @@ def trainTestValidSplit(params: dataclass, data: torch.tensor) -> tuple:
 
 
 def timestepSplit(
-    dataset: torch.tensor, data_info: pd.DataFrame, params: dataclass
+    dataset: torch.Tensor, data_info: pd.DataFrame, params: dataclass
 ) -> tuple:
     """
     Split the data into the time step to predict and the time step to use
@@ -437,7 +445,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder: initialized input encoder
         output_encoder: initialized output encoder
     """
-    if "FNO2d" in params.NN:
+    if "FNO2d" in params.NN or "Ints" in params.DATA_PATH:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
     elif "GravColl" in params.data_name or "Turb" in params.data_name:
@@ -475,8 +483,8 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     logger.debug("Train size: %s", train_size)
     logger.debug("Test size: %s", tests_size)
     logger.debug("Valid size: %s", valid_size)
-    wandb.config["Train data"] = train_size
 
+    wandb.config["Train data"] = train_size
     wandb.config["Test data"] = tests_size
     wandb.config["Valid data"] = valid_size
     wandb.config["Total data"] = train_size + tests_size + valid_size
@@ -488,6 +496,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     full_data_a, full_data_u, time_data_a, time_data_u = timestepSplit(
         full_data, time_data, params
     )
+
     # permute data to correct shape
     full_data_a = permute(full_data_a, params, full_data_a.shape[0], S)
     full_data_u = permute(full_data_u, params, full_data_u.shape[0], S)
