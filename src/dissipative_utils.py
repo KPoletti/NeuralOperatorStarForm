@@ -1,8 +1,12 @@
+"""Originally taken from Markov Neural Operator
+Github: https://github.com/neuraloperator/markov_neural_operator
+Commited/Written by Miguel Lie-Schiaffini
+"""
 import numpy as np
 import torch
 
 
-def sample_uniform_spherical_shell(npoints: int, radii: float, shape: tuple):
+def sample_uniform_spherical_shell(npoints: int, radii: list[float], shape: tuple):
     """
     Samples points uniformly from a spherical shell.
 
@@ -21,7 +25,7 @@ def sample_uniform_spherical_shell(npoints: int, radii: float, shape: tuple):
         # uniformly sample radius
         samp_radius = np.random.uniform(inner_radius, outer_radius)
         # ref: https://mathworld.wolfram.com/SpherePointPicking.html
-        vec = np.random.randn(ndim)
+        vec = np.random.randn(int(ndim))
         vec /= np.linalg.norm(vec, axis=0)
         pts.append(np.reshape(samp_radius * vec, shape))
 
@@ -71,6 +75,8 @@ def part_unity_post_process(x, model, rho, diss):
     Returns:
         torch.Tensor: Output of the post-processing function.
     """
-    return rho(torch.norm(x)) * model(x).reshape(x.shape[0],) + (
+    return rho(torch.norm(x)) * model(x).reshape(
+        x.shape[0],
+    ) + (
         1 - rho(x)
     ) * diss(x)

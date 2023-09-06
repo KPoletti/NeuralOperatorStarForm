@@ -61,7 +61,6 @@ def set_Loss(params):
     from neuralop.training.losses import LpLoss, H1Loss
 
     if params.loss_name == "LpLoss":
-
         return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
         return H1Loss(d=params.d, reduce_dims=(0, 1))
