@@ -65,11 +65,9 @@ def main(params):
     dist.init_process_group("nccl", init_method="env://")
     torch.cuda.set_device(local_rank)
     rank = dist.get_rank()
-    print(f"Start running basic DDP Neural Operator on rank {rank}.")
     # initialize device
     torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device_id = rank % torch.cuda.device_count()
-    print(f"Device_id {device_id}")
 
     for r in range(dist.get_world_size()):
         if r == dist.get_rank():
@@ -79,9 +77,7 @@ def main(params):
                 f"world_size = {dist.get_world_size()}",
             )
         dist.barrier()
-    print(
-        f"Free: {torch.cuda.mem_get_info()[0] * 10**-9:1.3f} GiB\t Avail: {torch.cuda.mem_get_info()[1] * 10**-9:1.3f} GiB"
-    )
+
     ################################################################
     # Wandb Setup
     ################################################################
@@ -102,7 +98,7 @@ def main(params):
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
-        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
+        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_DDP"
     )
     params.path = path
     # check if path exists
@@ -172,8 +168,10 @@ def main(params):
         ckp_path=f"results/{path}/models/{params.NN}_snapshot.pt",
     )
     Trainer.train(trainLoader, testLoader, output_encoder)
+    savename = ""
     if local_rank == 0:
         os.remove(f"results/{params.path}/models/{params.NN}_snapshot.pt")
+        savename = "ValidationData"
     ################################################################
     # test neural network
     ################################################################
@@ -183,7 +181,7 @@ def main(params):
         validLoader,
         output_encoder=output_encoder,
         input_encoder=input_encoder,
-        savename="ValidationData",
+        savename=savename,
     )
     dist.destroy_process_group()
     wandb.finish()
