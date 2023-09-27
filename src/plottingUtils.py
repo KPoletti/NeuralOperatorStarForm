@@ -2,9 +2,8 @@
 """
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import animation
-
 import torch
+from matplotlib import animation
 
 
 def createAnimation(
@@ -37,6 +36,7 @@ def createAnimation(
     im1.set_clim(vmin=tmp[0, ..., 0].min(), vmax=tmp[0, ..., 0].max())
     im2.set_clim(vmin=tmp[0, ..., 1].min(), vmax=tmp[0, ..., 1].max())
     im3.set_clim(vmin=tmp[0, ..., 2].min(), vmax=tmp[0, ..., 2].max())
+
     # add colorbar to each axis
     fig.colorbar(
         im1,
