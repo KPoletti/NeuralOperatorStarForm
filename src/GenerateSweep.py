@@ -7,7 +7,7 @@ import os.path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
 )
-import input as params
+import input as params  # noqa: E402
 
 
 def convertParamsToDict(params):

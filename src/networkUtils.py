@@ -13,13 +13,17 @@ Exceptions:
     None
 """
 import logging
-from dataclasses import dataclass
-
 from neuralop.models import FNO2d, FNO3d
 
 import torch.nn.functional as F
-from cliffordlayers.models.models_2d import CliffordFourierBasicBlock2d, CliffordNet2d
-from cliffordlayers.models.models_3d import CliffordFourierBasicBlock3d, CliffordNet3d
+from cliffordlayers.models.basic.twod import (
+    CliffordFourierBasicBlock2d,
+    CliffordFluidNet2d,
+)
+from cliffordlayers.models.basic.threed import (
+    CliffordFourierBasicBlock3d,
+    CliffordMaxwellNet3d,
+)
 from cliffordlayers.models.utils import partialclass
 from torch import nn
 
@@ -29,7 +33,7 @@ logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
 # define the network architecture
-def initializeNetwork(params: dataclass) -> nn.Module:
+def initializeNetwork(params) -> nn.Module:
     """
     Initialize the model
     Input:
@@ -37,7 +41,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
     Output:
         model: torch.nn.Module
     """
-
+    model = nn.Module()
     # TODO: allow MLP to be input parameter
     if params.NN == "FNO2d":
         model = FNO2d(
@@ -80,8 +84,8 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             skip=params.skip_type,
         )
     elif params.NN == "CNL2d":
-        model = CliffordNet2d(
-            g=[-1, -1],
+        model = CliffordFluidNet2d(
+            g=params.g,
             block=partialclass(
                 "CliffordFourierBasicBlock2d",
                 CliffordFourierBasicBlock2d,
@@ -97,7 +101,7 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             rotation=False,
         )
     elif params.NN == "CNL3d":
-        model = CliffordNet3d(
+        model = CliffordMaxwellNet3d(
             g=[1, 1, 1],
             block=partialclass(
                 "CliffordFourierBasicBlock3d",
@@ -114,4 +118,5 @@ def initializeNetwork(params: dataclass) -> nn.Module:
             norm=False,
         )
     logger.debug(model)
+
     return model

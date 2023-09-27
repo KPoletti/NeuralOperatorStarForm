@@ -59,8 +59,15 @@ class TensorDataset(Dataset):
         """
         tensor_x = self.x[index]
         tensor_y = self.y[index]
-        meta_x = self.meta_x[index]
-        meta_y = self.meta_y[index]
+        meta_x = None
+        meta_y = None
+
+        if self.meta_x is not None:
+            meta_x = self.meta_x[index]
+
+        if self.meta_y is not None:
+            meta_y = self.meta_y[index]
+
         if self.transform_x is not None:
             tensor_x = self.transform_x(tensor_x)
 

@@ -61,7 +61,6 @@ def set_Loss(params):
     from neuralop.training.losses import LpLoss, H1Loss
 
     if params.loss_name == "LpLoss":
-
         return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
         return H1Loss(d=params.d, reduce_dims=(0, 1))
@@ -72,7 +71,7 @@ def set_Loss(params):
 def main(config=None):
     import input as params
 
-    with wandb.init(project=f"{params.data_name}", config=config):
+    with wandb.init(config=config):
         config = wandb.config
         # reset values based on sweep
         # TODO: make this more general
@@ -85,10 +84,6 @@ def main(config=None):
             f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
             f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
         )
-
-        # Print the parameters
-        convertParamsToJSON(params)
-        # print(json.dumps(paramsJSON, indent=4, sort_keys=True))
 
         # check if path exists
         if not os.path.exists(f"results/{path}"):
@@ -182,18 +177,11 @@ if __name__ == "__main__":
     """
     # change the directory to main.py's directory
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    # parser = argparse.ArgumentParser()
     print(f"Found {torch.cuda.device_count()} GPUs")
-    ######### input parameters #########
-    # parser.add_argument("--input", type=str, default="input", help="input file")
-    # parser.add_argument("--N", type=int, default=params.N, help="Number of Data points")
-    import input as params
 
     with open("private/wandb_api_key.txt") as f:
         wandb_api_key = f.readlines()[0]
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
-    paramsDict = convertParamsToJSON(params)
-    with open(f"./sweep_config_{params.data_name}.yaml") as file:
-        config = yaml.load(file, Loader=yaml.FullLoader)
-    main(config=config)
+
+    main()
