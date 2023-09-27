@@ -71,18 +71,18 @@ elif data_name == "GravColl":
     poolStride = 0  # set to 0 to disable pooling
 
 elif data_name == "Turb":
-    N = 7143
+    N = 4664
     S = 64
     dN = 10
     T = 5
     T_in = 5
 
-    mass = "ALL"
-    extras = ""
-    DATA_PATH = "../dataToSend/TrainingData/TurbProj/"
+    mass = "1-4"
+    extras = "_SmallRange"
+    DATA_PATH = "../dataToSend/TrainingData/TurbProj_SmallerVP/"
     TRAIN_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.pt"
     TIME_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.h5"
-    data_name = f"{data_name}{mass}_dN{dN}"
+    data_name = f"{data_name}_VP{mass}_dN{dN}"
 
     modes = 32  # star Form 20
     width = 64  # star Form 100
@@ -172,7 +172,7 @@ if poolKernel > 0:
 # Neural network parameters
 ##############################################
 NN = "CNL2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
-
+g = (1, 1)
 skip_type = "soft-gating"  # "identity", "linear" or "soft-gating"
 if NN == "MNO":
     out_dim = 1
@@ -189,7 +189,8 @@ if NN == "MNO":
 ##############################################
 # Training parameters
 ##############################################
-lr = 0.00001
+lr = 0.0001
+weight_decay = 1e-3
 epochs = 50
 batch_size = 10
 optimizer = "Adam"

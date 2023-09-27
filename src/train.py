@@ -1,6 +1,8 @@
 """
-This module contains the Trainer class, which is used for training a neural network model.
-It also contains utility functions for checking the visibility of data and creating animations.
+This module contains the Trainer class, which is used for training a neural network 
+model.
+It also contains utility functions for checking the visibility of data and creating 
+animations.
 """
 import logging
 import os
@@ -48,7 +50,7 @@ class NormalizedMSE:
         return self.mse(x, y) / torch.mean(y)
 
 
-def dataVisibleCheck(data: torch.tensor, meta: dict, save: str, idx):
+def dataVisibleCheck(data: torch.Tensor, meta: dict, save: str, idx):
     """
     Creates a mp4 of a random batch of the data to check if the data is visible
     Inputs:
@@ -80,8 +82,8 @@ class Trainer(object):
         params (dataclass): A dataclass containing the hyperparameters for training.
         device (torch.device): The device to use for training (e.g. "cpu" or "cuda").
         optimizer (torch.optim.Optimizer): The optimizer to use for training.
-        scheduler (torch.optim.lr_scheduler._LRScheduler): The learning rate scheduler to use for
-                                                           training.
+        scheduler (torch.optim.lr_scheduler._LRScheduler): The learning rate scheduler
+                                                           to use for training.
         loss (callable): The loss function to use for training.
         plot_path (str): The directory to save the plots.
     """
@@ -100,25 +102,14 @@ class Trainer(object):
         Args:
             model (nn.Module): The neural network model to train.
             params (dataclass): A dataclass containing the hyperparameters for training.
-            device (torch.device): The device to use for training (e.g. "cpu" or "cuda").
+            device (torch.device): The device to use for training (e.g. "cpu" or "cuda")
         """
         self.model = model
         self.params = params
         self.device = device
         self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=params.lr, weight_decay=1e-3
+            self.model.parameters(), lr=params.lr, weight_decay=params.weight_decay
         )
-        # self.scheduler1 = torch.optim.lr_scheduler.StepLR(
-        #     self.optimizer,
-        #     step_size=params.scheduler_step,
-        #     gamma=params.scheduler_gamma,
-        # )
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #     self.optimizer, T_max=params.cosine_step
-        # )
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        #     self.optimizer, T_0=params.cosine_step
-        # )
         self.loss = params.loss_fn
         self.plot_path = f"results/{self.params.path}/plots"
         self.save_every = save_every
@@ -134,7 +125,8 @@ class Trainer(object):
         Computes the dissipative regularization loss for a given input tensor x.
 
         Args:
-            x (torch.Tensor): The input tensor to compute the dissipative regularization loss for.
+            x (torch.Tensor): The input tensor to compute the dissipative regularization
+            loss for.
             device (torch.device): The device to use for computation.
 
         Returns:
@@ -163,7 +155,7 @@ class Trainer(object):
 
         Args:
             train_loader (torch.utils.data.DataLoader): The training data loader.
-            output_encoder (callable): The output encoder to use for decoding the output.
+            output_encoder (callable): The output encoder to use for decoding the output
             epoch (int): The current epoch number.
 
         Returns:
@@ -171,9 +163,10 @@ class Trainer(object):
         """
         # initialize loss
         train_loss = 0
-        # loss = 0
+        loss = 0
         diss_loss = 0
         diss_loss_l2 = 0
+        idx = 0
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
         torch.autograd.set_detect_anomaly(True)
@@ -274,6 +267,8 @@ class Trainer(object):
 
         logger.debug(f"len(test_loader.dataset) = {len(test_loader.dataset)}")
         logger.debug(f"len(train_loader.dataset) = {len(train_loader.dataset)}")
+        loss_old = 500
+
         # start training
         for epoch in range(self.epochs_run, self.params.epochs):
             epoch_timer = time.time()
@@ -288,6 +283,8 @@ class Trainer(object):
                 and epoch % self.save_every == 0
             ):
                 self._save_snapshot(epoch)
+            train_loss /= len(train_loader.dataset)
+            loss_ratio = (train_loss - loss_old) / loss_old
 
             self.model.eval()
             test_loss = 0
@@ -302,10 +299,12 @@ class Trainer(object):
                     # decode  if there is an output encoder
                     if output_encoder is not None:
                         output = output_encoder.decode(output)
-                        # do not decode the test target because the test data is not encode
-                    if batch_idx == rand_point and epoch == self.save_every:
+                        # do not decode the test target because test data isn't encode
+                    if (batch_idx == rand_point and epoch == self.save_every) or (
+                        loss_ratio >= 5
+                    ):
                         idx = np.random.randint(0, data.shape[0] - 1)
-                        savename = f"{self.plot_path}/Test_decoded_"
+                        savename = f"{self.plot_path}/Test_decoded_R{loss_ratio:1.2f}"
                         dataVisibleCheck(
                             data, sample["meta_x"], f"{savename}input", idx
                         )
@@ -318,7 +317,6 @@ class Trainer(object):
                     test_loss += test_loss_fn(output, target).item()
 
             test_loss /= len(test_loader.dataset)
-            train_loss /= len(train_loader.dataset)
             # self.scheduler1.step()
 
             epoch_timer = time.time() - epoch_timer
@@ -364,6 +362,10 @@ class Trainer(object):
         num_dims = len(prediction.shape)
         num_samples = prediction.shape[0]
         ind = -1
+        ind_grid = -1
+        ind_tim = -1
+        ind_dim = -1
+
         if num_dims == 5:
             # find which dimension is dN//2
             for i in range(1, len(prediction.shape)):
@@ -399,17 +401,14 @@ class Trainer(object):
             prediction = prediction.index_select(ind_dim, torch.tensor(ind))
             prediction = prediction.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             prediction = prediction.squeeze().flatten(0, 1)
-            # prediction = prediction.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
 
             truth = truth.index_select(ind_dim, torch.tensor(ind))
-            # truth = truth.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
             truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             truth = truth.squeeze().flatten(0, 1)
 
             in_data = in_data.index_select(ind_dim, torch.tensor(ind))
             in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             in_data = in_data.squeeze().flatten(0, 1)
-            # input = input.index_select(ind_tim, torch.tensor(t_ind)).squeeze()
 
             # and (n,x,y,t) flatten to (t*n, x, y)
             num_dims = len(prediction.shape)
@@ -465,12 +464,13 @@ class Trainer(object):
         savename: str = "",
     ) -> None:
         """
-        Evaluates the model on the given data_loader and saves the results to a .mat file.
+        Evaluates the model on the given data_loader and saves the results to a .mat
         Args:
-            data_loader (torch.utils.data.DataLoader): The data loader to evaluate the model on.
+            data_loader (torch.utils.data.DataLoader): The data loader to evaluate the
+            model on.
             input_encoder (optional): The input encoder to use. Defaults to None.
             output_encoder (optional): The output encoder to use. Defaults to None.
-            savename (str, optional): The name to use when saving the results to a .mat file.
+            savename (str, optional): The name to use when saving the results to a .mat
                                       Defaults to "".
         Returns:
             None
@@ -479,10 +479,14 @@ class Trainer(object):
         self.model.eval()
         # create a tensor to store the prediction
         num_samples = len(data_loader.dataset)
-        for batchidx, sample in enumerate(data_loader):
-            data, target = sample["x"].to(self.device), sample["y"].to(self.device)
-            lentime = len(sample["meta_x"]["time"])
-            break
+        sample = next(iter(data_loader))
+        data = sample["x"].to(self.device)
+        target = sample["y"].to(self.device)
+        lentime = len(sample["meta_x"]["time"])
+        # for batchidx, sample in enumerate(data_loader):
+        #     data, target = sample["x"].to(self.device), sample["y"].to(self.device)
+        #     lentime = len(sample["meta_x"]["time"])
+        #     break
 
         size = [num_samples] + [d for d in data.shape if d != 1]
         pred = torch.zeros(size)
@@ -491,10 +495,12 @@ class Trainer(object):
         truth = torch.zeros(size)
         test_loss = 0
         re_loss = 0
+        roll_batch = 0
         rand_point = np.random.randint(0, len(data_loader))
         mass = "null"
         mass_list = []
         time_data = torch.zeros(num_samples, lentime)
+
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
@@ -558,15 +564,18 @@ class Trainer(object):
             num_trained = self.params.N * self.params.split[0]
             print(f"Final Loss for {int(num_trained)}: {test_loss} ")
             wandb.log({"Valid Loss": test_loss, "Reapply Loss": re_loss})
+
         print(
-            f"Saving data as {os.getcwd()} results/{self.params.path}/data/{savename}.mat"
+            "Saving data as:",
+            f"{os.getcwd()} results/{self.params.path}/data/{savename}.mat",
         )
         # flatten the time for plotting
         time_data = time_data.flatten()
 
         if len(savename) > 0:
             print(
-                f"Saving data as {os.getcwd()} results/{self.params.path}/data/{savename}.mat"
+                "Saving data as:",
+                f"{os.getcwd()} results/{self.params.path}/data/{savename}.mat",
             )
             scipy.io.savemat(
                 f"results/{self.params.path}/data/{savename}.mat",
