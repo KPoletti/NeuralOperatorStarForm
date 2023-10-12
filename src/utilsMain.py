@@ -283,7 +283,7 @@ def dfTolist(frame: pd.DataFrame) -> list:
         # find the mass of the star
         snap = frame.iloc[i][keys[0][0]]["file"]
         # split the file by mass
-        info["mass"] = snap.split("M")[-1].split("_")[0]
+        info["mass"] = snap.split("_")[1]
         info["time"] = [frame.iloc[i][key[0]]["time"] for key in keys[::2]]
         # append info to the list
         data[i] = info
