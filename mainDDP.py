@@ -109,6 +109,9 @@ def main(params):
         os.makedirs(f"results/{path}/models")
         os.makedirs(f"results/{path}/plots")
         os.makedirs(f"results/{path}/data")
+    if os.path.isfile(f"results/{path}/models/{params.NN}_snapshot.pt"):
+        os.remove(f"results/{path}/models/{params.NN}_snapshot.pt")
+
     params.lr = params.lr * dist.get_world_size()
     ################################################################
     # SET UP LOGGING
