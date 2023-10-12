@@ -4,6 +4,132 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib import animation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import seaborn as sns
+
+sns.set_style("white")
+
+
+def plot_timeStep_NoBounds(
+    truthData, predcData, error, timeStep, save=False, saveName=""
+):
+    fig, ax = plt.subplots(1, 3)
+    fig.set_size_inches(20, 8)
+    grid = 1.25
+
+    im1 = ax[0].imshow(
+        truthData[timeStep, :, :],
+        cmap="viridis",
+        # norm=matplotlib.colors.LogNorm(),
+        origin="lower",
+        extent=[-grid, grid, -grid, grid],
+    )
+    im2 = ax[1].imshow(
+        predcData[timeStep, :, :],
+        cmap="viridis",
+        # norm=matplotlib.colors.LogNorm(),
+        origin="lower",
+        extent=[-grid, grid, -grid, grid],
+    )
+    im3 = ax[2].imshow(
+        error[timeStep, :, :],
+        cmap="viridis",
+        # norm=matplotlib.colors.LogNorm(),
+        origin="lower",
+        extent=[-grid, grid, -grid, grid],
+    )
+    divider0 = make_axes_locatable(ax[0])
+    cax0 = divider0.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(
+        im1,
+        cax=cax0,
+        orientation="vertical",
+        label=r"Projected Density ($\frac{g}{cm^2}$)",
+    )
+    divider1 = make_axes_locatable(ax[1])
+    cax1 = divider1.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(
+        im1,
+        cax=cax1,
+        orientation="vertical",
+        label=r"Projected Density ($\frac{g}{cm^2}$)",
+    )
+    divider2 = make_axes_locatable(ax[2])
+    cax2 = divider2.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(
+        im3, cax=cax2, orientation="vertical", label=r"Error ($\frac{g}{cm^2}$)"
+    )
+    fig.tight_layout()
+
+    # fig.colorbar(im4, ax=ax[1, 0], shrink=0.57, label=r"Error ($\frac{g}{cm^2}$)")
+    if save:
+        fig.savefig(f"{saveName}.png")
+    # plt.show()
+    return fig, ax, im1, im2, im3
+
+
+def Animation_true_pred_error(
+    truthData, predcData, savePath, out_times, mass, error_type="absErr", fps=25
+):
+    truthData = truthData.cpu().detach().numpy()
+    predcData = predcData.cpu().detach().numpy()
+    numOfFrames = np.min([500, truthData.shape[0]])
+    error_type = "absErr"
+    log_axis = ""
+    error2use = np.abs(truthData - predcData)
+    error_title = r"Absolute Error  $|\rho_{pred} - \rho_{true}|}$"
+
+    if "rel" in error_type:
+        error2use = np.abs(truthData - predcData) / np.abs(truthData)
+        error_title = (
+            r"Relative Error  $\frac{|\rho_{pred} - \rho_{truth}|}{\|\rho_{truth}\|}$"
+        )
+
+    movie_name = f"{savePath}FlowVideo_{error_type}{log_axis}.mp4"
+    fig, ax, im1, im2, im3 = plot_timeStep_NoBounds(
+        truthData, predcData, error2use, 0, save=False, saveName="test"
+    )
+    im1.set_clim(vmin=truthData.min(), vmax=truthData.mean() + 6 * truthData.std())
+    im2.set_clim(vmin=truthData.min(), vmax=truthData.mean() + 6 * truthData.std())
+    im3.set_clim(
+        vmin=error2use.min() + 1e-3, vmax=error2use.mean() + 5 * error2use.std()
+    )
+
+    # fig.set_size_inches(20,20)
+
+    # ax[0, 0].set_title("Input Data at t")
+    ax[0].set_title(r"True Density")
+    ax[1].set_title(r"FNO Predicted Density")
+    ax[2].set_title(error_title)
+
+    # ax[0].set_title("MHD Data")
+    ax[0].set_xlabel("Length (pc)")
+    ax[1].set_xlabel("Length (pc)")
+    ax[2].set_xlabel("Length (pc)")
+    ax[0].set_ylabel("Length (pc)")
+
+    # fig.tight_layout()
+    def animate(i):
+        # im1.set_data(inputData[i, ...])
+        im1.set_data(truthData[i, ...])
+        im2.set_data(predcData[i, ...])
+        im3.set_data(error2use[i, ...])
+        if i % 5 == 0:
+            fig.suptitle(f"T = {out_times[i] *10**-3:1.3f} Myr")
+            # im1.set_clim(vmin=inputData[i,...].min(), vmax=inputData[i,...].max())
+            # im2.set_clim(vmin=truthData[i, ...].min(), vmax=truthData[i, ...].max())
+            # im3.set_clim(vmin=predcData[i, ...].min(), vmax=predcData[i, ...].max())
+
+    ani = animation.FuncAnimation(
+        fig, animate, frames=numOfFrames, interval=100, repeat=True
+    )
+    ani.save(
+        movie_name,
+        dpi=100,
+        writer=animation.FFMpegWriter(fps=fps),
+    )
+
+    print(f"Saved to {movie_name}")
 
 
 def createAnimation(
