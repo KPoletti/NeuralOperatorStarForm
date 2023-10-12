@@ -18,7 +18,7 @@ use_ddp = False  # Option to use multi-gpu distributed data
 preactivation = True  # Option to use ResNet Preactivation
 saveNeuralNetwork = False  # Option to save the neural network
 
-n_layers = 5
+n_layers = 4
 mlp_dropout = 0.2
 # Pooling parameters
 poolKernel = 4  # set to 0 to disable pooling
@@ -77,15 +77,20 @@ elif data_name == "Turb":
     T = 5
     T_in = 5
 
-    mass = "1-4"
-    extras = "_SmallRange"
-    DATA_PATH = "../dataToSend/TrainingData/TurbProj_SmallerVP/"
+    mass = "12ALL"
+    extras = "_Seed"
+    DATA_PATH = "../dataToSend/TrainingData/TurbSeed/"
     TRAIN_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.pt"
     TIME_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.h5"
+    # mass = "1-4"
+    # extras = "_SmallRange"
+    # DATA_PATH = "../dataToSend/TrainingData/TurbProj_SmallerVP/"
+    # TRAIN_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.pt"
+    # TIME_PATH = f"{DATA_PATH}Turb_VP{mass}_dN{dN}{extras}.h5"
     data_name = f"{data_name}_VP{mass}_dN{dN}"
 
-    modes = 32  # star Form 20
-    width = 64  # star Form 100
+    modes = 8  # star Form 20
+    width = 16  # star Form 100
     poolKernel = 0  # set to 0 to disable pooling
     poolStride = 0  # set to 0 to disable pooling
     input_channels = 5
@@ -171,7 +176,7 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "CNL2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+NN = "FNO2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
 g = (1, 1)
 skip_type = "soft-gating"  # "identity", "linear" or "soft-gating"
 if NN == "MNO":
@@ -190,9 +195,9 @@ if NN == "MNO":
 # Training parameters
 ##############################################
 lr = 0.0001
-weight_decay = 1e-3
+weight_decay = 2e-4
 epochs = 50
-batch_size = 10
+batch_size = 50
 optimizer = "Adam"
 scheduler_step = 10
 scheduler_gamma = 0.5

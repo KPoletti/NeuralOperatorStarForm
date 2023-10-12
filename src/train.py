@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import seaborn as sns
-from src.plottingUtils import createAnimation
+from src.plottingUtils import createAnimation, Animation_true_pred_error
 
 import torch
 import wandb
@@ -22,6 +22,7 @@ from torch import nn
 from neuralop.training.losses import LpLoss
 
 
+sns.set_color_codes(palette="deep")
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
@@ -50,27 +51,49 @@ class NormalizedMSE:
         return self.mse(x, y) / torch.mean(y)
 
 
-def dataVisibleCheck(data: torch.Tensor, meta: dict, save: str, idx):
+def dataVisibleCheck(
+    target: torch.Tensor, output: torch.Tensor, meta: dict, save: str, idx
+):
     """
-    Creates a mp4 of a random batch of the data to check if the data is visible
+    Creates a mp4 of a random batch of the target to check if the target is visible
     Inputs:
-        data: pytorch tensor of shape (batch, time, x, y, variable)
+        target: pytorch tensor of shape (batch, time, x, y, variable)
+        output: pytorch tensor of shape (batch, time, x, y, variable)
         meta: dictionary of metadata
         save: directory to save the plots
     """
     if "FNO2d" in save:
+        time_data = torch.tensor([t[idx] for t in meta["time"]])
+        Animation_true_pred_error(
+            truthData=target[idx, ...],
+            predcData=output[idx, ...],
+            savePath=save,
+            out_times=time_data,
+            mass="",
+        )
         return None
     # check if FNO3d is in save
-    if "FNO3d" in save:
-        data = data.permute(0, 1, 3, 4, 2)
-    # reduce the data to just that batch
-    data = data[idx, ...]
+    if "FNO3d" in save or "CNL2d" in save:
+        target = target.permute(0, 1, 3, 4, 2)
+        output = output.permute(0, 1, 3, 4, 2)
 
-    # reduce the meta data to just that batch
-    mass = meta["mass"][idx]
-    time_data = torch.tensor([t[idx] for t in meta["time"]])
-    # create an animation of the density and velocity data
-    createAnimation(data, time_data, save, mass, fps=1)
+        # reduce the target to just that batch
+        output = output[idx, ...]
+        target = target[idx, ...]
+
+        # reduce the meta data to just that batch
+        mass = meta["mass"][idx]
+        time_data = torch.tensor([t[idx] for t in meta["time"]])
+        # create an animation of the density and velocity data
+        Animation_true_pred_error(
+            truthData=target,
+            predcData=output,
+            savePath=save,
+            out_times=time_data,
+            mass=mass,
+            fps=1,
+        )
+        # createAnimation(target, time_data, save, mass, fps=1)
 
 
 class Trainer(object):
@@ -108,7 +131,10 @@ class Trainer(object):
         self.params = params
         self.device = device
         self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=params.lr, weight_decay=params.weight_decay
+            self.model.parameters(),
+            lr=params.lr,
+            weight_decay=params.weight_decay,
+            amsgrad=True,
         )
         self.loss = params.loss_fn
         self.plot_path = f"results/{self.params.path}/plots"
@@ -186,9 +212,7 @@ class Trainer(object):
             if batch_idx == rand_point and epoch == self.save_every:
                 savename = f"{self.plot_path}/Train_"
                 idx = np.random.randint(0, data.shape[0] - 1)
-                dataVisibleCheck(data, sample["meta_x"], f"{savename}input", idx)
-                dataVisibleCheck(target, sample["meta_y"], f"{savename}target", idx)
-                dataVisibleCheck(output, sample["meta_y"], f"{savename}output", idx)
+                dataVisibleCheck(target, output, sample["meta_y"], f"{savename}", idx)
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -199,9 +223,7 @@ class Trainer(object):
 
             if batch_idx == rand_point and epoch == self.save_every:
                 savename = f"{self.plot_path}/Train_decoded_"
-                dataVisibleCheck(data, sample["meta_x"], f"{savename}input", idx)
-                dataVisibleCheck(target, sample["meta_y"], f"{savename}target", idx)
-                dataVisibleCheck(output, sample["meta_y"], f"{savename}output", idx)
+                dataVisibleCheck(target, output, sample["meta_y"], f"{savename}", idx)
             # compute the loss
             loss = self.loss(output.float(), target)
             if len(loss.shape) > 1:
@@ -217,6 +239,13 @@ class Trainer(object):
             loss.backward()
 
             self.optimizer.step()
+            if (
+                loss.item() - train_loss
+            ) ** 2 >= 20 * train_loss**2 and batch_idx > 0:
+                savename = f"{self.plot_path}/Train_decoded_Jump_b{batch_idx}_ep{epoch}"
+                dataVisibleCheck(
+                    target, output, sample["meta_y"], f"{savename}target", idx
+                )
             train_loss += loss.item()
             self.optimizer.zero_grad(set_to_none=True)
             # self.scheduler.step()
@@ -265,8 +294,15 @@ class Trainer(object):
         else:
             test_loss_fn = self.loss
 
-        logger.debug(f"len(test_loader.dataset) = {len(test_loader.dataset)}")
-        logger.debug(f"len(train_loader.dataset) = {len(train_loader.dataset)}")
+        test_data_length = len(test_loader.dataset)
+        train_data_length = len(train_loader.dataset)
+        if self.params.use_ddp:
+            num_gpus = torch.cuda.device_count()
+            test_data_length /= num_gpus
+            train_data_length /= num_gpus
+
+        logger.debug(f"len(test_loader.dataset) = {test_data_length}")
+        logger.debug(f"len(train_loader.dataset) = {train_data_length}")
         loss_old = 500
 
         # start training
@@ -283,9 +319,9 @@ class Trainer(object):
                 and epoch % self.save_every == 0
             ):
                 self._save_snapshot(epoch)
-            train_loss /= len(train_loader.dataset)
+            train_loss /= train_data_length
             loss_ratio = (train_loss - loss_old) / loss_old
-
+            loss_old = train_loss
             self.model.eval()
             test_loss = 0
             with torch.no_grad():
@@ -304,19 +340,13 @@ class Trainer(object):
                         loss_ratio >= 5
                     ):
                         idx = np.random.randint(0, data.shape[0] - 1)
-                        savename = f"{self.plot_path}/Test_decoded_R{loss_ratio:1.2f}"
+                        savename = f"{self.plot_path}/Test_decoded_R{loss_ratio:1.2f}_ep{epoch}"
                         dataVisibleCheck(
-                            data, sample["meta_x"], f"{savename}input", idx
-                        )
-                        dataVisibleCheck(
-                            target, sample["meta_y"], f"{savename}target", idx
-                        )
-                        dataVisibleCheck(
-                            output, sample["meta_y"], f"{savename}output", idx
+                            target, output, sample["meta_y"], f"{savename}", idx
                         )
                     test_loss += test_loss_fn(output, target).item()
 
-            test_loss /= len(test_loader.dataset)
+            test_loss /= test_data_length
             # self.scheduler1.step()
 
             epoch_timer = time.time() - epoch_timer
@@ -338,9 +368,7 @@ class Trainer(object):
             wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
         try:
             if self.params.saveNeuralNetwork:
-                torch.save(
-                    self.model, f"results/{self.params.path}/models/{self.params.NN}"
-                )
+                self._save_snapshot(epoch + 1)
         except Exception as e:
             logger.error(f"Failed to save model: {e}")
 
@@ -379,26 +407,6 @@ class Trainer(object):
 
             # select a random int between 0 and
             ind = 0
-            gif_save = f"{self.plot_path}/All_valid"
-            # create an animation of the density and velocity data
-            plot_input = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            plot_input = plot_input.flatten(0, 1)
-            plot_truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            plot_truth = plot_truth.flatten(0, 1)
-            plot_prediction = prediction.permute(
-                0, ind_tim, ind_grid, ind_grid + 1, ind_dim
-            )
-            plot_prediction = plot_prediction.flatten(0, 1)
-            plot_roll = roll.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            plot_roll = plot_roll.flatten(0, 1)
-
-            createAnimation(plot_input[:150], time_data, f"{gif_save}_in", mass, fps=5)
-            createAnimation(plot_truth[:150], time_data, f"{gif_save}_tru", mass, fps=5)
-            createAnimation(
-                plot_prediction[:150], time_data, f"{gif_save}_out", mass, fps=5
-            )
-            createAnimation(plot_roll[:150], time_data, f"{gif_save}_roll", mass, fps=5)
-
             # reduce the data to only that indices for ind_dim and ind_tim
             prediction = prediction.index_select(ind_dim, torch.tensor(ind))
             prediction = prediction.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
@@ -407,6 +415,10 @@ class Trainer(object):
             truth = truth.index_select(ind_dim, torch.tensor(ind))
             truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
             truth = truth.squeeze().flatten(0, 1)
+
+            roll = roll.index_select(ind_dim, torch.tensor(ind))
+            roll = roll.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+            roll = roll.squeeze().flatten(0, 1)
 
             in_data = in_data.index_select(ind_dim, torch.tensor(ind))
             in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
@@ -417,9 +429,25 @@ class Trainer(object):
         elif num_dims == 4:
             prediction = prediction.squeeze().flatten(0, 1)
             truth = truth.squeeze().flatten(0, 1)
+            roll = roll.squeeze().flatten(0, 1)
             in_data = in_data.squeeze().flatten(0, 1)
+
             num_dims = len(prediction.shape)
 
+        Animation_true_pred_error(
+            truthData=truth,
+            predcData=prediction,
+            savePath=f"{self.plot_path}/out_",
+            out_times=time_data,
+            mass="",
+        )
+        Animation_true_pred_error(
+            truthData=truth,
+            predcData=roll,
+            savePath=f"{self.plot_path}/roll_",
+            out_times=time_data,
+            mass="",
+        )
         dims_to_rmse = tuple(range(-num_dims + 1, 0))
 
         # compute RMSE
@@ -428,8 +456,23 @@ class Trainer(object):
         rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
         # compute RMSE for each time step
         relative_rmse = torch.sqrt(torch.mean((in_data - truth) ** 2, dim=dims_to_rmse))
-        # normalize RMSE
         relative_rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
+
+        time_data = time_data.detach().numpy()
+        rmse = rmse.detach().numpy()
+        relative_rmse = relative_rmse.detach().numpy()
+
+        # sort rmse based on time to take mean
+        ind_sort = time_data.argsort()
+        sorted_rmse = rmse[ind_sort[::-1]]
+        sorted_time = time_data[ind_sort[::-1]]
+        sorted_relt = relative_rmse[ind_sort[::-1]]
+
+        def moving_average(x, w):
+            return np.convolve(x, np.ones(w), "valid") / w
+
+        avg_rmse = moving_average(sorted_rmse, 50)
+        avg_relt = moving_average(sorted_relt, 50)
 
         # set the style
         sns.set_style("darkgrid")
@@ -438,14 +481,28 @@ class Trainer(object):
         axis.plot(
             time_data[: 3 * num_samples],
             rmse[: 3 * num_samples],
-            ".",
+            "b.",
+            alpha=0.2,
             label="Neural RMSE",
+        )
+        axis.plot(
+            sorted_time[: avg_rmse.shape[0]],
+            avg_rmse,
+            color="b",
+            label=" Average Neural RMSE",
         )
         axis.plot(
             time_data[: 3 * num_samples],
             relative_rmse[: 3 * num_samples],
-            ".",
+            "g.",
+            alpha=0.2,
             label="RMSE between time steps",
+        )
+        axis.plot(
+            sorted_time[: avg_rmse.shape[0]],
+            avg_relt,
+            "g",
+            label="Average RMSE between time steps",
         )
         axis.set_xlabel("Time (Myr)")
         axis.set_ylabel("Normalized  RMSE")
@@ -486,12 +543,9 @@ class Trainer(object):
         data = sample["x"].to(self.device)
         target = sample["y"].to(self.device)
         lentime = len(sample["meta_x"]["time"])
-        # for batchidx, sample in enumerate(data_loader):
-        #     data, target = sample["x"].to(self.device), sample["y"].to(self.device)
-        #     lentime = len(sample["meta_x"]["time"])
-        #     break
-
         size = [num_samples] + [d for d in data.shape if d != 1]
+
+        # initialize
         pred = torch.zeros(size)
         roll = torch.zeros(size)
         in_data = torch.zeros(size)
@@ -510,12 +564,12 @@ class Trainer(object):
                 meta_data = sample["meta_x"]
                 cur_mass = meta_data["mass"][0]
                 time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
-                # apply the input encoder
                 output = self.model(data)
                 # apply the model to previous output
                 if batchidx == 0 or cur_mass != mass:
                     roll_batch = output.clone()
                     logging.info(f"Updating mass from M{mass} to M{cur_mass}")
+                    print(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
                 elif batchidx > 0:
                     if input_encoder is not None:
@@ -532,15 +586,11 @@ class Trainer(object):
                 if batchidx == rand_point:
                     save_plot = f"{self.plot_path}/Valid_"
                     idx = 0
-                    dataVisibleCheck(data, sample["meta_x"], f"{save_plot}input", idx)
                     dataVisibleCheck(
-                        target, sample["meta_y"], f"{save_plot}target", idx
+                        target, output, sample["meta_y"], f"{save_plot}target", idx
                     )
                     dataVisibleCheck(
-                        output, sample["meta_y"], f"{save_plot}output", idx
-                    )
-                    dataVisibleCheck(
-                        roll_batch, sample["meta_y"], f"{save_plot}rolling", idx
+                        target, roll_batch, sample["meta_y"], f"{save_plot}rolling", idx
                     )
 
                 # compute the loss
