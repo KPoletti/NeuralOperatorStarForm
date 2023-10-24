@@ -71,7 +71,7 @@ def set_Loss(params):
 def main(config=None):
     import input as params
 
-    with wandb.init(config=config):
+    with wandb.init() as run:
         config = wandb.config
         # reset values based on sweep
         # TODO: make this more general
@@ -164,6 +164,7 @@ def main(config=None):
             input_encoder=input_encoder,
         )
         print(f"Output folder for {path}")
+        os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")
 
 
 if __name__ == "__main__":

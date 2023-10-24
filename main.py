@@ -137,7 +137,7 @@ def main(params):
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
-    Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=20)
+    Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=1)
     Trainer.train(trainLoader, testLoader, output_encoder)
 
     ################################################################
@@ -152,6 +152,7 @@ def main(params):
         savename="ValidationData",
     )
     print(f"Output folder for {path}")
+    os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")
     run.finish()
 
 

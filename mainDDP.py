@@ -87,7 +87,8 @@ def main(params):
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
-    wandb.init(project=params.data_name, config=paramsJSON)
+    run = wandb.init(project=params.data_name, config=paramsJSON)
+    print(f"Wandb saved to {run.dir}")
 
     ################################################################
     # PATH
@@ -173,7 +174,7 @@ def main(params):
     Trainer.train(trainLoader, testLoader, output_encoder)
     savename = ""
     if local_rank == 0:
-        os.remove(f"results/{params.path}/models/{params.NN}_snapshot.pt")
+        # os.remove(f"results/{params.path}/models/{params.NN}_snapshot.pt")
         savename = "ValidationData"
     ################################################################
     # test neural network
@@ -187,7 +188,10 @@ def main(params):
         savename=savename,
     )
     dist.destroy_process_group()
-    wandb.finish()
+    print(f"Wandb saved to {run.dir}")
+    if local_rank == 0:
+        os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")
+    run.finish()
     print(f"Output folder for {path}")
     # run.finish()
 
