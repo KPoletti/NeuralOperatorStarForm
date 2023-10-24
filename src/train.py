@@ -1,11 +1,12 @@
 """
-This module contains the Trainer class, which is used for training a neural network 
+This module contains the Trainer class, which is used for training a neural network
 model.
-It also contains utility functions for checking the visibility of data and creating 
+It also contains utility functions for checking the visibility of data and creating
 animations.
 """
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -52,7 +53,7 @@ class NormalizedMSE:
 
 
 def dataVisibleCheck(
-    target: torch.Tensor, output: torch.Tensor, meta: dict, save: str, idx
+    target: torch.Tensor, output: torch.Tensor, meta: dict, save: str, idx, device
 ):
     """
     Creates a mp4 of a random batch of the target to check if the target is visible
@@ -62,38 +63,34 @@ def dataVisibleCheck(
         meta: dictionary of metadata
         save: directory to save the plots
     """
-    if "FNO2d" in save:
-        time_data = torch.tensor([t[idx] for t in meta["time"]])
-        Animation_true_pred_error(
-            truthData=target[idx, ...],
-            predcData=output[idx, ...],
-            savePath=save,
-            out_times=time_data,
-            mass="",
-        )
-        return None
     # check if FNO3d is in save
     if "FNO3d" in save or "CNL2d" in save:
+        # permute to get variable on the end
         target = target.permute(0, 1, 3, 4, 2)
         output = output.permute(0, 1, 3, 4, 2)
 
-        # reduce the target to just that batch
-        output = output[idx, ...]
-        target = target[idx, ...]
-
-        # reduce the meta data to just that batch
-        mass = meta["mass"][idx]
-        time_data = torch.tensor([t[idx] for t in meta["time"]])
-        # create an animation of the density and velocity data
-        Animation_true_pred_error(
-            truthData=target,
-            predcData=output,
-            savePath=save,
-            out_times=time_data,
-            mass=mass,
-            fps=1,
-        )
-        # createAnimation(target, time_data, save, mass, fps=1)
+        target = target[..., 0]
+        output = output[..., 0]
+    a, b, c, d = target.shape
+    target = target.reshape(a * b, c, d)
+    output = output.reshape(a * b, c, d)
+    mass = meta["mass"]
+    time_data = torch.tensor(
+        [[t[batch_id] for t in meta["time"]] for batch_id in range(a)]
+    )
+    time_data = time_data.flatten()
+    if a <= 2:
+        a = 2 * b
+    Animation_true_pred_error(
+        truthData=target[: a // 2, ...],
+        predcData=output[: a // 2, ...],
+        savePath=save,
+        out_times=time_data[: a // 2],
+        mass=mass,
+        device=device,
+        fps=10,
+    )
+    # createAnimation(target, time_data, save, mass, fps=1)
 
 
 class Trainer(object):
@@ -141,6 +138,10 @@ class Trainer(object):
         self.save_every = save_every
         self.epochs_run = 0
         self.ckp_path = ckp_path
+        self.do_animate = (self.device == 0) * self.params.use_ddp
+        print(self.do_animate)
+        # initialize the loss function
+        self.loss = self.params.loss_fn
         if os.path.exists(self.ckp_path) and params.use_ddp:
             self._load_snapshot(self.ckp_path)
 
@@ -196,7 +197,7 @@ class Trainer(object):
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
         torch.autograd.set_detect_anomaly(True)
-
+        counter = 0
         for batch_idx, sample in enumerate(train_loader):
             data = sample["x"].to(self.device)
             target = sample["y"].to(self.device)
@@ -210,9 +211,16 @@ class Trainer(object):
                 logger.debug(f"Output Meta Data: {sample['meta_y']}")
 
             if batch_idx == rand_point and epoch == self.save_every:
-                savename = f"{self.plot_path}/Train_"
+                savename = f"{self.plot_path}/Train_b{batch_idx}_ep{epoch}"
                 idx = np.random.randint(0, data.shape[0] - 1)
-                dataVisibleCheck(target, output, sample["meta_y"], f"{savename}", idx)
+                dataVisibleCheck(
+                    target,
+                    output,
+                    sample["meta_y"],
+                    f"{savename}",
+                    idx,
+                    device=self.do_animate,
+                )
 
             # decode  if there is an output encoder
             if output_encoder is not None:
@@ -222,8 +230,15 @@ class Trainer(object):
                 output = output_encoder.decode(output)
 
             if batch_idx == rand_point and epoch == self.save_every:
-                savename = f"{self.plot_path}/Train_decoded_"
-                dataVisibleCheck(target, output, sample["meta_y"], f"{savename}", idx)
+                savename = f"{self.plot_path}/Train_decoded_b{batch_idx}_ep{epoch}"
+                dataVisibleCheck(
+                    target,
+                    output,
+                    sample["meta_y"],
+                    f"{savename}",
+                    idx,
+                    device=self.do_animate,
+                )
             # compute the loss
             loss = self.loss(output.float(), target)
             if len(loss.shape) > 1:
@@ -244,8 +259,16 @@ class Trainer(object):
             ) ** 2 >= 20 * train_loss**2 and batch_idx > 0:
                 savename = f"{self.plot_path}/Train_decoded_Jump_b{batch_idx}_ep{epoch}"
                 dataVisibleCheck(
-                    target, output, sample["meta_y"], f"{savename}target", idx
+                    target,
+                    output,
+                    sample["meta_y"],
+                    f"{savename}target",
+                    idx,
+                    device=self.do_animate,
                 )
+                counter += 1
+            if counter >= 0.5 * self.params.batch_size:
+                raise ValueError("Training loss is growing too much.")
             train_loss += loss.item()
             self.optimizer.zero_grad(set_to_none=True)
             # self.scheduler.step()
@@ -285,8 +308,6 @@ class Trainer(object):
         Output:
             None
         """
-        # initialize the loss function
-        self.loss = self.params.loss_fn
         # define a test loss function that will be the same regardless of training
         if sweep:
             # use Mean L2 Loss
@@ -337,12 +358,17 @@ class Trainer(object):
                         output = output_encoder.decode(output)
                         # do not decode the test target because test data isn't encode
                     if (batch_idx == rand_point and epoch == self.save_every) or (
-                        loss_ratio >= 5
+                        batch_idx == rand_point and loss_ratio >= 5
                     ):
                         idx = np.random.randint(0, data.shape[0] - 1)
                         savename = f"{self.plot_path}/Test_decoded_R{loss_ratio:1.2f}_ep{epoch}"
                         dataVisibleCheck(
-                            target, output, sample["meta_y"], f"{savename}", idx
+                            target,
+                            output,
+                            sample["meta_y"],
+                            f"{savename}",
+                            idx,
+                            device=self.do_animate,
                         )
                     test_loss += test_loss_fn(output, target).item()
 
@@ -366,13 +392,24 @@ class Trainer(object):
                 f"Test Loss: {test_loss:.6f}\t"
             )
             wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
-        try:
-            if self.params.saveNeuralNetwork:
-                self._save_snapshot(epoch + 1)
-        except Exception as e:
-            logger.error(f"Failed to save model: {e}")
+        if self.params.saveNeuralNetwork:
+            modelname = f"results/{self.params.path}/models/{self.params.NN}.pt"
+            if self.params.use_ddp:
+                torch.save(self.model.module.state_dict(), modelname)
+            else:
+                torch.save(self.model.state_dict(), modelname)
 
-    def plot(self, time_data, prediction, in_data, truth, roll, mass, savename=""):
+    def plot(
+        self,
+        time_data,
+        prediction,
+        in_data,
+        truth,
+        roll,
+        mass,
+        savename="",
+        do_animate=True,
+    ):
         """
         Plot the prediction
         Input:
@@ -410,44 +447,40 @@ class Trainer(object):
             # reduce the data to only that indices for ind_dim and ind_tim
             prediction = prediction.index_select(ind_dim, torch.tensor(ind))
             prediction = prediction.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            prediction = prediction.squeeze().flatten(0, 1)
 
             truth = truth.index_select(ind_dim, torch.tensor(ind))
             truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            truth = truth.squeeze().flatten(0, 1)
 
             roll = roll.index_select(ind_dim, torch.tensor(ind))
             roll = roll.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            roll = roll.squeeze().flatten(0, 1)
 
             in_data = in_data.index_select(ind_dim, torch.tensor(ind))
             in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-            in_data = in_data.squeeze().flatten(0, 1)
 
-            # and (n,x,y,t) flatten to (t*n, x, y)
-            num_dims = len(prediction.shape)
-        elif num_dims == 4:
-            prediction = prediction.squeeze().flatten(0, 1)
-            truth = truth.squeeze().flatten(0, 1)
-            roll = roll.squeeze().flatten(0, 1)
-            in_data = in_data.squeeze().flatten(0, 1)
+        # and (n,x,y,t) flatten to (t*n, x, y)
+        prediction = prediction.squeeze().flatten(0, 1)
+        truth = truth.squeeze().flatten(0, 1)
+        roll = roll.squeeze().flatten(0, 1)
+        in_data = in_data.squeeze().flatten(0, 1)
 
-            num_dims = len(prediction.shape)
-
-        Animation_true_pred_error(
-            truthData=truth,
-            predcData=prediction,
-            savePath=f"{self.plot_path}/out_",
-            out_times=time_data,
-            mass="",
-        )
-        Animation_true_pred_error(
-            truthData=truth,
-            predcData=roll,
-            savePath=f"{self.plot_path}/roll_",
-            out_times=time_data,
-            mass="",
-        )
+        num_dims = len(prediction.shape)
+        if do_animate:
+            Animation_true_pred_error(
+                truthData=truth,
+                predcData=prediction,
+                savePath=f"{self.plot_path}/out_",
+                out_times=time_data,
+                mass="",
+                device=self.do_animate,
+            )
+            Animation_true_pred_error(
+                truthData=truth,
+                predcData=roll,
+                savePath=f"{self.plot_path}/roll_",
+                out_times=time_data,
+                mass="",
+                device=self.do_animate,
+            )
         dims_to_rmse = tuple(range(-num_dims + 1, 0))
 
         # compute RMSE
@@ -521,6 +554,7 @@ class Trainer(object):
         input_encoder=None,
         output_encoder=None,
         savename: str = "",
+        do_animate=True,
     ) -> None:
         """
         Evaluates the model on the given data_loader and saves the results to a .mat
@@ -587,10 +621,20 @@ class Trainer(object):
                     save_plot = f"{self.plot_path}/Valid_"
                     idx = 0
                     dataVisibleCheck(
-                        target, output, sample["meta_y"], f"{save_plot}target", idx
+                        target,
+                        output,
+                        sample["meta_y"],
+                        f"{save_plot}output",
+                        idx,
+                        device=self.do_animate,
                     )
                     dataVisibleCheck(
-                        target, roll_batch, sample["meta_y"], f"{save_plot}rolling", idx
+                        target,
+                        roll_batch,
+                        sample["meta_y"],
+                        f"{save_plot}rolling",
+                        idx,
+                        device=self.do_animate,
                     )
 
                 # compute the loss
@@ -646,4 +690,5 @@ class Trainer(object):
                 roll=roll,
                 mass=mass_list,
                 savename=savename,
+                do_animate=do_animate,
             )
