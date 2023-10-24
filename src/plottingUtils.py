@@ -69,8 +69,17 @@ def plot_timeStep_NoBounds(
 
 
 def Animation_true_pred_error(
-    truthData, predcData, savePath, out_times, mass, error_type="absErr", fps=25
+    truthData,
+    predcData,
+    savePath,
+    out_times,
+    mass,
+    error_type="absErr",
+    fps=25,
+    device=0,
 ):
+    if device != 0:
+        return None
     truthData = truthData.cpu().detach().numpy()
     predcData = predcData.cpu().detach().numpy()
     numOfFrames = np.min([500, truthData.shape[0]])
@@ -130,6 +139,7 @@ def Animation_true_pred_error(
     )
 
     print(f"Saved to {movie_name}")
+    plt.close()
 
 
 def createAnimation(
