@@ -20,7 +20,8 @@ import torch
 import wandb
 from torch import nn
 
-from neuralop.training.losses import LpLoss
+from neuralop.training.losses import LpLoss, H1Loss
+from neuralop.datasets.transforms import PositionalEmbedding
 
 
 sns.set_color_codes(palette="deep")
@@ -309,11 +310,8 @@ class Trainer(object):
             None
         """
         # define a test loss function that will be the same regardless of training
-        if sweep:
-            # use Mean L2 Loss
-            test_loss_fn = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
-        else:
-            test_loss_fn = self.loss
+        test_loss_lp = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
+        test_loss_h1 = H1Loss(d=self.params.d, reduce_dims=(0, 1))
 
         test_data_length = len(test_loader.dataset)
         train_data_length = len(train_loader.dataset)
@@ -344,7 +342,8 @@ class Trainer(object):
             loss_ratio = (train_loss - loss_old) / loss_old
             loss_old = train_loss
             self.model.eval()
-            test_loss = 0
+            test_lp = 0
+            test_h1 = 0
             with torch.no_grad():
                 rand_point = np.random.randint(0, len(test_loader))
                 for batch_idx, sample in enumerate(test_loader):
@@ -370,28 +369,39 @@ class Trainer(object):
                             idx,
                             device=self.do_animate,
                         )
-                    test_loss += test_loss_fn(output, target).item()
+                    test_lp += test_loss_lp(output, target).item()
+                    test_h1 += test_loss_h1(output, target).item()
 
-            test_loss /= test_data_length
+            test_lp /= test_data_length
+            test_h1 /= test_data_length
+
             # self.scheduler1.step()
 
             epoch_timer = time.time() - epoch_timer
             logger.info(
-                "Epoch: %d/%d \t Took: %.2f \t Training Loss: %.6f \t Test Loss: %.6f",
+                "Epoch: %d/%d \t Took: %.2f \t Training Loss: %.6f \t Test L2 Loss: %.6f \t Test H1 Loss: %.6f",
                 epoch + 1,
                 self.params.epochs,
                 epoch_timer,
                 train_loss,
-                test_loss,
+                test_lp,
+                test_h1,
             )
 
             print(
                 f"Epoch: {epoch+1}/{self.params.epochs} \t"
                 f"Took: {epoch_timer:.2f} \t"
                 f"Training Loss: {train_loss:.6f} \t"
-                f"Test Loss: {test_loss:.6f}\t"
+                f"Test L2 Loss: {test_lp:.6f}\t"
+                f"Test H1 Loss: {test_h1:.6f}\t"
             )
-            wandb.log({"Test-Loss": test_loss, "Train-Loss": train_loss})
+            wandb.log(
+                {
+                    "Test-Loss-L2": test_lp,
+                    "Test-Loss-H1": test_h1,
+                    "Train-Loss": train_loss,
+                }
+            )
         if self.params.saveNeuralNetwork:
             modelname = f"results/{self.params.path}/models/{self.params.NN}.pt"
             if self.params.use_ddp:
@@ -577,7 +587,7 @@ class Trainer(object):
         data = sample["x"].to(self.device)
         target = sample["y"].to(self.device)
         lentime = len(sample["meta_x"]["time"])
-        size = [num_samples] + [d for d in data.shape if d != 1]
+        size = [num_samples] + [d for d in target.shape if d != 1]
 
         # initialize
         pred = torch.zeros(size)
@@ -591,7 +601,9 @@ class Trainer(object):
         mass = "null"
         mass_list = []
         time_data = torch.zeros(num_samples, lentime)
-
+        transform = None
+        if self.params.positional_encoding:
+            transform = PositionalEmbedding(self.params.grid_boundaries, 0)
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
@@ -606,8 +618,6 @@ class Trainer(object):
                     print(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
                 elif batchidx > 0:
-                    if input_encoder is not None:
-                        roll_batch = input_encoder.encode(roll_batch)
                     # apply the model to previous output
                     roll_batch = self.model(roll_batch)
 
@@ -640,7 +650,8 @@ class Trainer(object):
                 # compute the loss
                 re_loss += self.loss(roll_batch, target).item()
                 test_loss += self.loss(output, target).item()
-
+                if transform is not None:
+                    data = data[:, 0:5, ...]
                 if input_encoder is not None:
                     data = input_encoder.decode(data)
 
@@ -649,8 +660,14 @@ class Trainer(object):
                 in_data[batchidx] = data
                 truth[batchidx] = target
                 roll[batchidx] = roll_batch
+                if input_encoder is not None:
+                    roll_batch = input_encoder.encode(roll_batch)
+                if transform is not None:
+                    roll_batch = transform(roll_batch[0, ...].cpu()).to(self.device)
+                    roll_batch = roll_batch.unsqueeze(0)
 
                 mass_list = mass_list + [cur_mass] * lentime
+
             # normalize test loss
             test_loss /= len(data_loader.dataset)
             re_loss /= len(data_loader.dataset)
