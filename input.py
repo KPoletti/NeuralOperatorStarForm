@@ -17,7 +17,8 @@ encoder = True  # Option to use the encoder
 use_ddp = False  # Option to use multi-gpu distributed data
 preactivation = True  # Option to use ResNet Preactivation
 saveNeuralNetwork = False  # Option to save the neural network
-
+if positional_encoding:
+    grid_boundaries = [[-1.25, 1.25], [-1.25, 1.25]]
 n_layers = 4
 mlp_dropout = 0.2
 # Pooling parameters
@@ -162,6 +163,8 @@ elif data_name == "CATS":
     width = 48
     N = 2970
 
+if positional_encoding:
+    input_channels += 2
 
 ##############################################
 # Data parameters

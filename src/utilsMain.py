@@ -7,8 +7,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 from neuralop.utils import UnitGaussianNormalizer
+from neuralop.datasets.transforms import PositionalEmbedding
 from src.meta_dataset import TensorDataset
-
 import torch
 from torch.utils.data.distributed import DistributedSampler
 import wandb
@@ -551,18 +551,27 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         train_data_u,
         dfTolist(train_time_a),
         dfTolist(train_time_u),
+        transform_x=PositionalEmbedding(params.grid_boundaries, 0)
+        if params.positional_encoding
+        else None,
     )
     tests_dataset = TensorDataset(
         tests_data_a,
         tests_data_u,
         dfTolist(tests_time_a),
         dfTolist(tests_time_u),
+        transform_x=PositionalEmbedding(params.grid_boundaries, 0)
+        if params.positional_encoding
+        else None,
     )
     valid_dataset = TensorDataset(
         valid_data_a,
         valid_data_u,
         dfTolist(valid_time_a),
         dfTolist(valid_time_u),
+        transform_x=PositionalEmbedding(params.grid_boundaries, 0)
+        if params.positional_encoding
+        else None,
     )
     shuffle_type = True
     train_sampler = None
