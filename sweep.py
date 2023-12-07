@@ -15,50 +15,8 @@ import json
 import yaml
 
 
-def convertParamsToDict(params):
-    """
-    Converts the params to a dictionary for wandb
-    """
-    paramsDict = {}
-    unneeded = [
-        "__name__",
-        "__doc__",
-        "__package__",
-        "__loader__",
-        "__spec__",
-        "__file__",
-        "__cached__",
-        "__builtins__",
-        "nn",
-        "sample_uniform_spherical_shell",
-        "linear_scale_dissipative_target",
-        "LpLoss",
-        "H1Loss",
-        "math",
-    ]
-    for key, value in vars(params).items():
-        # skip the levels that are not needed
-        if key in unneeded:
-            continue
-        paramsDict[key] = value
-    return paramsDict
-
-
-def convertParamsToJSON(params):
-    """
-    Converts the params to a JSON for wandb
-    """
-    paramsDict = convertParamsToDict(params)
-    paramsJSON = json.dumps(
-        paramsDict, default=lambda o: o.__dict__, sort_keys=True, indent=4
-    )
-    # convert back to dictionary
-    paramsJSON = json.loads(paramsJSON)
-    return paramsJSON
-
-
 def set_Loss(params):
-    from neuralop.training.losses import LpLoss, H1Loss
+    from neuralop import LpLoss, H1Loss
 
     if params.loss_name == "LpLoss":
         return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
@@ -162,6 +120,8 @@ def main(config=None):
             validLoader,
             output_encoder=output_encoder,
             input_encoder=input_encoder,
+            savename="ValidationData",
+            do_animate=False,
         )
         print(f"Output folder for {path}")
         os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")
