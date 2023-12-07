@@ -1,5 +1,5 @@
 import argparse
-import json
+
 import logging
 import os
 import time
@@ -10,51 +10,10 @@ import src.train as myTrain
 import torch
 import torch.distributed as dist
 from src.utilsMain import prepareDataForTraining
+from src.parameterUtils import convertParamsToJSON
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import wandb
-
-
-def convertParamsToDict(params_obj):
-    """
-    Converts the params to a dictionary for wandb
-    """
-    params_dict = {}
-    unneeded = [
-        "__name__",
-        "__doc__",
-        "__package__",
-        "__loader__",
-        "__spec__",
-        "__file__",
-        "__cached__",
-        "__builtins__",
-        "nn",
-        "sample_uniform_spherical_shell",
-        "linear_scale_dissipative_target",
-        "LpLoss",
-        "H1Loss",
-        "math",
-    ]
-    for key, value in vars(params_obj).items():
-        # skip the levels that are not needed
-        if key in unneeded:
-            continue
-        params_dict[key] = value
-    return params_dict
-
-
-def convertParamsToJSON(params):
-    """
-    Converts the params to a JSON for wandb
-    """
-    paramsDict = convertParamsToDict(params)
-    paramsJSON = json.dumps(
-        paramsDict, default=lambda o: o.__dict__, sort_keys=True, indent=4
-    )
-    # convert back to dictionary
-    paramsJSON = json.loads(paramsJSON)
-    return paramsJSON
 
 
 def main(params):
@@ -88,7 +47,7 @@ def main(params):
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
     run = wandb.init(project=params.data_name, config=paramsJSON)
-    print(f"Wandb saved to {run.dir}")
+    print(f"Wandb saved to {run.dir}")  # type: ignore
 
     ################################################################
     # PATH
@@ -113,7 +72,7 @@ def main(params):
     if os.path.isfile(f"results/{path}/models/{params.NN}_snapshot.pt"):
         os.remove(f"results/{path}/models/{params.NN}_snapshot.pt")
 
-    params.lr = params.lr * dist.get_world_size()
+    # params.lr = params.lr * dist.get_world_size()
     ################################################################
     # SET UP LOGGING
     ################################################################
@@ -173,20 +132,25 @@ def main(params):
     )
     Trainer.train(trainLoader, testLoader, output_encoder)
     savename = ""
+    ################################################################
+    # test neural network
+    ################################################################
+    print(f"local_rank is {local_rank}")
     if local_rank == 0:
         # os.remove(f"results/{params.path}/models/{params.NN}_snapshot.pt")
+        print("we plot")
         savename = "ValidationData"
-    ################################################################
-    # test neural network
-    ################################################################
-    logging.info("........Testing neural network........")
-    # test neural network
-    Trainer.evaluate(
-        validLoader,
-        output_encoder=output_encoder,
-        input_encoder=input_encoder,
-        savename=savename,
-    )
+        logging.info("........Testing neural network........")
+        # test neural network
+        Trainer.evaluate(
+            validLoader,
+            output_encoder=output_encoder,
+            input_encoder=input_encoder,
+            savename=savename,
+        )
+    else:
+        print("we not plotting")
+
     dist.destroy_process_group()
     print(f"Wandb saved to {run.dir}")
     if local_rank == 0:
