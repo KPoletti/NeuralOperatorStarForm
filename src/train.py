@@ -20,7 +20,7 @@ import torch
 import wandb
 from torch import nn
 
-from neuralop.training.losses import LpLoss, H1Loss
+from neuralop import LpLoss, H1Loss
 from neuralop.datasets.transforms import PositionalEmbedding
 
 
@@ -67,8 +67,8 @@ def dataVisibleCheck(
     # check if FNO3d is in save
     if "FNO3d" in save or "CNL2d" in save:
         # permute to get variable on the end
-        target = target.permute(0, 1, 3, 4, 2)
-        output = output.permute(0, 1, 3, 4, 2)
+        target = target.permute(0, 4, 2, 3, 1)
+        output = output.permute(0, 4, 2, 3, 1)
 
         target = target[..., 0]
         output = output[..., 0]
@@ -134,17 +134,38 @@ class Trainer(object):
             weight_decay=params.weight_decay,
             amsgrad=True,
         )
+        if self.device == 0:
+            lr = self.optimizer.state_dict()["param_groups"][0]["lr"]
+            print(f"Adam LR {lr}")
         self.loss = params.loss_fn
         self.plot_path = f"results/{self.params.path}/plots"
         self.save_every = save_every
         self.epochs_run = 0
         self.ckp_path = ckp_path
-        self.do_animate = (self.device == 0) * self.params.use_ddp
+        self.do_animate = (self.device != 0) * self.params.use_ddp
         print(self.do_animate)
         # initialize the loss function
+        ntrain = int((self.params.split[0] * self.params.N))
         self.loss = self.params.loss_fn
+        iterations = self.params.epochs * (ntrain // self.params.batch_size) // 5
+        if self.params.use_ddp:
+            self.num_gpus = torch.cuda.device_count()
+            # iterations //= num_gpus
         if os.path.exists(self.ckp_path) and params.use_ddp:
             self._load_snapshot(self.ckp_path)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=iterations,
+            eta_min=1e-8,
+        )
+        # define a test loss function that will be the same regardless of training
+        self.test_loss_lp = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
+        self.test_loss_h1 = H1Loss(d=self.params.d, reduce_dims=(0, 1))
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(
+        #     self.optimizer,
+        #     step_size=params.scheduler_step,
+        #     gamma=params.scheduler_gamma,
+        # )
 
     def dissipativeRegularizer(
         self, data: torch.Tensor, device: torch.device
@@ -166,9 +187,9 @@ class Trainer(object):
         x_diss = torch.tensor(
             self.params.sampling_fn(data.shape[0], self.params.radii, data.shape[1:]),
             dtype=torch.float,
-        ).to(device)
+        ).to(self.device)
         assert x_diss.shape == data.shape
-        y_diss = self.params.target_fn(x_diss, self.params.scale_down).to(device)
+        y_diss = self.params.target_fn(x_diss, self.params.scale_down).to(self.device)
         out_diss = self.model(x_diss).reshape(-1, self.params.out_dim)
         diss_loss = (
             (1 / (self.params.S**2))
@@ -208,8 +229,8 @@ class Trainer(object):
                 logger.debug(f"Batch Data Shape: {data.shape}")
                 logger.debug(f"Batch Target Shape: {target.shape}")
                 logger.debug(f"Output Data Shape: {output.shape}")
-                logger.debug(f"Input Meta Data: {sample['meta_x']}")
-                logger.debug(f"Output Meta Data: {sample['meta_y']}")
+                logger.debug(f"Input Meta Data: {sample['meta_x']['mass'][0]}")
+                logger.debug(f"Output Meta Data: {sample['meta_y']['mass'][0]}")
 
             if batch_idx == rand_point and epoch == self.save_every:
                 savename = f"{self.plot_path}/Train_b{batch_idx}_ep{epoch}"
@@ -242,9 +263,9 @@ class Trainer(object):
                 )
             # compute the loss
             loss = self.loss(output.float(), target)
-            if len(loss.shape) > 1:
-                logger.debug(f"Loss Shape: {loss.shape}")
-                logger.debug(f"Loss Value: {loss.item()}")
+            # if len(loss.shape) > 1:
+            #     logger.debug(f"Loss Shape: {loss.shape}")
+            #     logger.debug(f"Loss Value: {loss.item()}")
 
             # add regularizer for MNO
             if self.params.NN == "MNO":
@@ -253,8 +274,9 @@ class Trainer(object):
                 loss += diss_loss
             # Backpropagate the loss
             loss.backward()
-
             self.optimizer.step()
+            if hasattr(self, "scheduler"):
+                self.scheduler.step()
             if (
                 loss.item() - train_loss
             ) ** 2 >= 20 * train_loss**2 and batch_idx > 0:
@@ -272,14 +294,8 @@ class Trainer(object):
                 raise ValueError("Training loss is growing too much.")
             train_loss += loss.item()
             self.optimizer.zero_grad(set_to_none=True)
-            # self.scheduler.step()
 
         return train_loss, loss
-
-    def _save_checkpoint(self, epoch):
-        ckp = self.model.module.state_dict()
-        torch.save(ckp, "checkpoint.pt")
-        print(f"Epoch {epoch} | Training checkpoint saved.")
 
     def _save_snapshot(self, epoch):
         snapshot = {}
@@ -309,16 +325,12 @@ class Trainer(object):
         Output:
             None
         """
-        # define a test loss function that will be the same regardless of training
-        test_loss_lp = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
-        test_loss_h1 = H1Loss(d=self.params.d, reduce_dims=(0, 1))
 
         test_data_length = len(test_loader.dataset)
         train_data_length = len(train_loader.dataset)
         if self.params.use_ddp:
-            num_gpus = torch.cuda.device_count()
-            test_data_length /= num_gpus
-            train_data_length /= num_gpus
+            test_data_length //= self.num_gpus
+            train_data_length //= self.num_gpus
 
         logger.debug(f"len(test_loader.dataset) = {test_data_length}")
         logger.debug(f"len(train_loader.dataset) = {train_data_length}")
@@ -345,7 +357,7 @@ class Trainer(object):
             test_lp = 0
             test_h1 = 0
             with torch.no_grad():
-                rand_point = np.random.randint(0, len(test_loader))
+                rand_point = np.random.randint(0, test_data_length)
                 for batch_idx, sample in enumerate(test_loader):
                     data = sample["x"].to(self.device)
                     target = sample["y"].to(self.device)
@@ -357,7 +369,7 @@ class Trainer(object):
                         output = output_encoder.decode(output)
                         # do not decode the test target because test data isn't encode
                     if (batch_idx == rand_point and epoch == self.save_every) or (
-                        batch_idx == rand_point and loss_ratio >= 5
+                        batch_idx == rand_point and loss_ratio >= 3
                     ):
                         idx = np.random.randint(0, data.shape[0] - 1)
                         savename = f"{self.plot_path}/Test_decoded_R{loss_ratio:1.2f}_ep{epoch}"
@@ -369,8 +381,8 @@ class Trainer(object):
                             idx,
                             device=self.do_animate,
                         )
-                    test_lp += test_loss_lp(output, target).item()
-                    test_h1 += test_loss_h1(output, target).item()
+                    test_lp += self.test_loss_lp(output, target).item()
+                    test_h1 += self.test_loss_h1(output, target).item()
 
             test_lp /= test_data_length
             test_h1 /= test_data_length
@@ -387,6 +399,9 @@ class Trainer(object):
                 test_lp,
                 test_h1,
             )
+            lr = self.optimizer.state_dict()["param_groups"][0]["lr"]
+            if self.device == 0:
+                print(f"Adam LR {lr}")
 
             print(
                 f"Epoch: {epoch+1}/{self.params.epochs} \t"
@@ -400,8 +415,10 @@ class Trainer(object):
                     "Test-Loss-L2": test_lp,
                     "Test-Loss-H1": test_h1,
                     "Train-Loss": train_loss,
+                    "Learn-Rate": lr,
                 }
             )
+
         if self.params.saveNeuralNetwork:
             modelname = f"results/{self.params.path}/models/{self.params.NN}.pt"
             if self.params.use_ddp:
@@ -409,88 +426,17 @@ class Trainer(object):
             else:
                 torch.save(self.model.state_dict(), modelname)
 
-    def plot(
+    def rmse_plot(
         self,
+        ind,
+        num_dims,
         time_data,
+        truth,
         prediction,
         in_data,
-        truth,
-        roll,
-        mass,
-        savename="",
-        do_animate=True,
+        savename,
     ):
-        """
-        Plot the prediction
-        Input:
-            prediction: torch.tensor
-            input: torch.tensor
-            truth: torch.tensor
-
-            savename: str
-        Output:
-            None
-        """
-        logging.getLogger("matplotlib").setLevel(logging.WARNING)
-
-        ############ RMSE ############
-        num_dims = len(prediction.shape)
         num_samples = prediction.shape[0]
-        ind = -1
-        ind_grid = -1
-        ind_tim = -1
-        ind_dim = -1
-
-        if num_dims == 5:
-            # find which dimension is dN//2
-            for i in range(1, len(prediction.shape)):
-                if prediction.shape[i] == self.params.d:
-                    ind_dim = i
-                if prediction.shape[i] == self.params.S:
-                    ind_grid = i
-                if prediction.shape[i] == self.params.dN // 2:
-                    ind_tim = i
-            ind_grid -= 1
-
-            # select a random int between 0 and
-            ind = 0
-            # reduce the data to only that indices for ind_dim and ind_tim
-            prediction = prediction.index_select(ind_dim, torch.tensor(ind))
-            prediction = prediction.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-
-            truth = truth.index_select(ind_dim, torch.tensor(ind))
-            truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-
-            roll = roll.index_select(ind_dim, torch.tensor(ind))
-            roll = roll.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-
-            in_data = in_data.index_select(ind_dim, torch.tensor(ind))
-            in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
-
-        # and (n,x,y,t) flatten to (t*n, x, y)
-        prediction = prediction.squeeze().flatten(0, 1)
-        truth = truth.squeeze().flatten(0, 1)
-        roll = roll.squeeze().flatten(0, 1)
-        in_data = in_data.squeeze().flatten(0, 1)
-
-        num_dims = len(prediction.shape)
-        if do_animate:
-            Animation_true_pred_error(
-                truthData=truth,
-                predcData=prediction,
-                savePath=f"{self.plot_path}/out_",
-                out_times=time_data,
-                mass="",
-                device=self.do_animate,
-            )
-            Animation_true_pred_error(
-                truthData=truth,
-                predcData=roll,
-                savePath=f"{self.plot_path}/roll_",
-                out_times=time_data,
-                mass="",
-                device=self.do_animate,
-            )
         dims_to_rmse = tuple(range(-num_dims + 1, 0))
 
         # compute RMSE
@@ -557,6 +503,106 @@ class Trainer(object):
             fig.savefig(f"{self.plot_path}/{savename}_RMSE.png")
         plt.close(fig)
         plt.close()
+
+    def plot(
+        self,
+        time_data,
+        prediction,
+        in_data,
+        truth,
+        roll,
+        mass,
+        savename="",
+        do_animate=True,
+    ):
+        """
+        Plot the prediction
+        Input:
+            prediction: torch.tensor
+            input: torch.tensor
+            truth: torch.tensor
+
+            savename: str
+        Output:
+            None
+        """
+        logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
+        ############ RMSE ############
+        num_dims = len(prediction.shape)
+        num_samples = prediction.shape[0]
+        ind = -1
+        ind_grid = -1
+        ind_tim = -1
+        ind_dim = -1
+
+        if num_dims == 5:
+            # find which dimension is dN//2
+            for i in range(1, len(prediction.shape)):
+                if prediction.shape[i] == self.params.output_channels:
+                    ind_dim = i
+                if prediction.shape[i] == self.params.S:
+                    ind_grid = i
+                if prediction.shape[i] == self.params.dN // 2:
+                    ind_tim = i
+            ind_grid -= 1
+
+            # select a random int between 0 and
+            ind = 0
+            # reduce the data to only that indices for ind_dim and ind_tim
+            prediction = prediction.index_select(ind_dim, torch.tensor(ind))
+            prediction = prediction.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+
+            truth = truth.index_select(ind_dim, torch.tensor(ind))
+            truth = truth.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+
+            roll = roll.index_select(ind_dim, torch.tensor(ind))
+            roll = roll.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+
+            in_data = in_data.index_select(ind_dim, torch.tensor(ind))
+            in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
+
+        # and (n,x,y,t) flatten to (t*n, x, y)
+        prediction = prediction.squeeze().flatten(0, 1)
+        truth = truth.squeeze().flatten(0, 1)
+        roll = roll.squeeze().flatten(0, 1)
+        in_data = in_data.squeeze().flatten(0, 1)
+
+        num_dims = len(prediction.shape)
+        if do_animate:
+            Animation_true_pred_error(
+                truthData=truth,
+                predcData=prediction,
+                savePath=f"{self.plot_path}/out_",
+                out_times=time_data,
+                mass="",
+            )
+            Animation_true_pred_error(
+                truthData=truth,
+                predcData=roll,
+                savePath=f"{self.plot_path}/roll_",
+                out_times=time_data,
+                mass="",
+            )
+
+        self.rmse_plot(
+            ind,
+            num_dims,
+            time_data,
+            truth,
+            roll,
+            in_data,
+            f"{savename}_rolling",
+        )
+        self.rmse_plot(
+            ind,
+            num_dims,
+            time_data,
+            truth,
+            prediction,
+            in_data,
+            f"{savename}",
+        )
 
     def evaluate(
         self,
@@ -648,8 +694,8 @@ class Trainer(object):
                     )
 
                 # compute the loss
-                re_loss += self.loss(roll_batch, target).item()
-                test_loss += self.loss(output, target).item()
+                re_loss += self.test_loss_lp(roll_batch, target).item()
+                test_loss += self.test_loss_lp(output, target).item()
                 if transform is not None:
                     data = data[:, 0:5, ...]
                 if input_encoder is not None:

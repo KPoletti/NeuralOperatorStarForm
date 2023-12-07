@@ -6,11 +6,12 @@ import logging
 from dataclasses import dataclass
 
 import pandas as pd
-from neuralop.utils import UnitGaussianNormalizer
-from neuralop.datasets.transforms import PositionalEmbedding
-from src.meta_dataset import TensorDataset
 import torch
+from neuralop.datasets.transforms import PositionalEmbedding
+from neuralop.utils import UnitGaussianNormalizer
+from src.meta_dataset import TensorDataset
 from torch.utils.data.distributed import DistributedSampler
+
 import wandb
 
 # initialize logger
@@ -383,7 +384,7 @@ def permuteFNO3d(data: torch.tensor) -> torch.tensor:
     Returns:
         torch.tensor: permuted data
     """
-    data = data.permute(0, 4, 3, 1, 2)
+    data = data.permute(0, 3, 1, 2, 4)
     return data
 
 
@@ -454,6 +455,8 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
     else:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
+    input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
+    output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
     return input_encoder, output_encoder
 
 
