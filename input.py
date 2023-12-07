@@ -3,7 +3,7 @@ from src.dissipative_utils import (
     sample_uniform_spherical_shell,
     linear_scale_dissipative_target,
 )
-from neuralop.training.losses import LpLoss, H1Loss
+from neuralop import LpLoss, H1Loss  # type: ignore
 import math
 
 level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -17,6 +17,7 @@ encoder = True  # Option to use the encoder
 use_ddp = False  # Option to use multi-gpu distributed data
 preactivation = True  # Option to use ResNet Preactivation
 saveNeuralNetwork = False  # Option to save the neural network
+positional_encoding = False
 if positional_encoding:
     grid_boundaries = [[-1.25, 1.25], [-1.25, 1.25]]
 n_layers = 4
@@ -164,7 +165,7 @@ elif data_name == "CATS":
     N = 2970
 
 if positional_encoding:
-    input_channels += 2
+    input_channels += 2  # type: ignore
 
 ##############################################
 # Data parameters
@@ -209,9 +210,9 @@ if NN == "FNO3d" or NN == "CNL2d":
 else:
     d = 2
 if loss_name == "LpLoss":
-    loss_fn = LpLoss(d=d, p=2, reduce_dims=(0, 1))
+    loss_fn = LpLoss(d=d, p=2, reduce_dims=(0, 1), reductions="mean")
 elif loss_name == "H1Loss":
-    loss_fn = H1Loss(d=d, reduce_dims=(0, 1))
+    loss_fn = H1Loss(d=d, reduce_dims=(0, 1), reductions="mean")
 
 
 file = "output.log"

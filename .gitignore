@@ -20,3 +20,5 @@ wandb/*
 input_*.py
 *.png
 src/trainRefactor.py
+*stats
+*txt
