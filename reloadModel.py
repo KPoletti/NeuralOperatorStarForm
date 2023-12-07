@@ -109,8 +109,13 @@ def main(path, datapath, do_animate):
     )
     VP = datapath.split("_VP")[-1].split("_")[0]
     axis = datapath.split("_VP")[0].split("_")[-1]
-    wandb.log({"Virial": float(VP), "axis": axis})
-    params.split = [0, 0, 1]
+    try:
+        wandb.log({"Virial": float(VP), "axis": axis})
+    except ValueError:
+        print("WARNING: Virial parameter could not be converted to float")
+        wandb.log({"Virial": VP, "axis": axis})
+        
+    params.split = [0, 0, 0.1]
     (
         validLoader,
         input_encoder,
