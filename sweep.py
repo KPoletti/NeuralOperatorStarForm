@@ -120,7 +120,7 @@ def main(config=None):
             validLoader,
             output_encoder=output_encoder,
             input_encoder=input_encoder,
-            savename="ValidationData",
+            savename="",
             do_animate=False,
         )
         print(f"Output folder for {path}")

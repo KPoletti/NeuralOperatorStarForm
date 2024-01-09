@@ -125,9 +125,19 @@ def Animation_true_pred_error(
         im3.set_data(error2use[i, ...])
         if i % 5 == 0:
             fig.suptitle(f"T = {out_times[i] *10**-3:1.3f} Myr")
-            # im1.set_clim(vmin=inputData[i,...].min(), vmax=inputData[i,...].max())
-            # im2.set_clim(vmin=truthData[i, ...].min(), vmax=truthData[i, ...].max())
-            # im3.set_clim(vmin=predcData[i, ...].min(), vmax=predcData[i, ...].max())
+            if "roll" in savePath:
+                im1.set_clim(
+                    vmin=truthData[i, ...].min(),
+                    vmax=truthData.mean() + 4 * truthData.std(),
+                )
+                im2.set_clim(
+                    vmin=predcData[i, ...].min(),
+                    vmax=predcData.mean() + 4 * predcData.std(),
+                )
+                im3.set_clim(
+                    vmin=error2use[i, ...].min(),
+                    vmax=error2use.mean() + 4 * error2use.std(),
+                )
 
     ani = animation.FuncAnimation(
         fig, animate, frames=numOfFrames, interval=100, repeat=True

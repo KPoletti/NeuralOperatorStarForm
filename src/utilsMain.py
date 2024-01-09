@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 import torch
-from neuralop.datasets.transforms import PositionalEmbedding
+from neuralop.datasets.transforms import PositionalEmbedding2D
 from neuralop.utils import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
 from torch.utils.data.distributed import DistributedSampler
@@ -421,7 +421,7 @@ def permute(data, params, size, gridsize) -> torch.tensor:
     Output:
         data: torch.tensor permuted data
     """
-    if "FNO3d" in params.NN:
+    if ("FNO3d" in params.NN) or ("RNN" in params.NN):
         return permuteFNO3d(data)
         # return permute_CNL2d(data)
 
@@ -511,7 +511,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     train_time_a, tests_time_a, valid_time_a = trainTestValidSplit(params, time_data_a)
     train_time_u, tests_time_u, valid_time_u = trainTestValidSplit(params, time_data_u)
 
-    # TODO: Figure out how to include the timesteps in the data
+    # TODO: Figure out how to include the timesteps in the
     if params.level == "DEBUG":
         print(f"Train Data Shape: {train_data_a.shape}")
         print(f"Test Data Shape: {tests_data_a.shape}")
@@ -554,7 +554,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         train_data_u,
         dfTolist(train_time_a),
         dfTolist(train_time_u),
-        transform_x=PositionalEmbedding(params.grid_boundaries, 0)
+        transform_x=PositionalEmbedding2D(params.grid_boundaries, 0)
         if params.positional_encoding
         else None,
     )
@@ -563,7 +563,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         tests_data_u,
         dfTolist(tests_time_a),
         dfTolist(tests_time_u),
-        transform_x=PositionalEmbedding(params.grid_boundaries, 0)
+        transform_x=PositionalEmbedding2D(params.grid_boundaries, 0)
         if params.positional_encoding
         else None,
     )
@@ -572,7 +572,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         valid_data_u,
         dfTolist(valid_time_a),
         dfTolist(valid_time_u),
-        transform_x=PositionalEmbedding(params.grid_boundaries, 0)
+        transform_x=PositionalEmbedding2D(params.grid_boundaries, 0)
         if params.positional_encoding
         else None,
     )
@@ -583,6 +583,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         shuffle_type = False
         train_sampler = DistributedSampler(train_dataset)
         test_sampler = DistributedSampler(tests_dataset)
+        tests_size //= torch.cuda.device_count()
     # Create the data loader
     # TODO: Fix the batch size for the tests and valid loaders
     # On gravcoll, for (15, 10, 200, 200 ,3) the test loss will grow if validSize =0

@@ -21,7 +21,7 @@ import wandb
 from torch import nn
 
 from neuralop import LpLoss, H1Loss
-from neuralop.datasets.transforms import PositionalEmbedding
+from neuralop.datasets.transforms import PositionalEmbedding2D
 
 
 sns.set_color_codes(palette="deep")
@@ -65,7 +65,7 @@ def dataVisibleCheck(
         save: directory to save the plots
     """
     # check if FNO3d is in save
-    if "FNO3d" in save or "CNL2d" in save:
+    if "FNO3d" in save or "CNL2d" in save or "RNN" in save:
         # permute to get variable on the end
         target = target.permute(0, 4, 2, 3, 1)
         output = output.permute(0, 4, 2, 3, 1)
@@ -147,12 +147,17 @@ class Trainer(object):
         # initialize the loss function
         ntrain = int((self.params.split[0] * self.params.N))
         self.loss = self.params.loss_fn
-        iterations = self.params.epochs * (ntrain // self.params.batch_size) // 5
+        iterations = (
+            self.params.epochs
+            * (ntrain // self.params.batch_size)
+            // self.params.cosine_step
+        )
         if self.params.use_ddp:
             self.num_gpus = torch.cuda.device_count()
-            # iterations //= num_gpus
+
         if os.path.exists(self.ckp_path) and params.use_ddp:
             self._load_snapshot(self.ckp_path)
+
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer,
             T_max=iterations,
@@ -161,11 +166,8 @@ class Trainer(object):
         # define a test loss function that will be the same regardless of training
         self.test_loss_lp = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         self.test_loss_h1 = H1Loss(d=self.params.d, reduce_dims=(0, 1))
-        # self.scheduler = torch.optim.lr_scheduler.StepLR(
-        #     self.optimizer,
-        #     step_size=params.scheduler_step,
-        #     gamma=params.scheduler_gamma,
-        # )
+        if self.params.NN == "RNN":
+            self.full_loss = H1Loss(d=self.params.d + 1, reduce_dims=(0, 1))
 
     def dissipativeRegularizer(
         self, data: torch.Tensor, device: torch.device
@@ -211,11 +213,11 @@ class Trainer(object):
             tuple: A tuple containing the training loss and the loss of the last batch.
         """
         # initialize loss
-        train_loss = 0
+        idx = 0
         loss = 0
         diss_loss = 0
+        train_loss = 0
         diss_loss_l2 = 0
-        idx = 0
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
         torch.autograd.set_detect_anomaly(True)
@@ -231,19 +233,6 @@ class Trainer(object):
                 logger.debug(f"Output Data Shape: {output.shape}")
                 logger.debug(f"Input Meta Data: {sample['meta_x']['mass'][0]}")
                 logger.debug(f"Output Meta Data: {sample['meta_y']['mass'][0]}")
-
-            if batch_idx == rand_point and epoch == self.save_every:
-                savename = f"{self.plot_path}/Train_b{batch_idx}_ep{epoch}"
-                idx = np.random.randint(0, data.shape[0] - 1)
-                dataVisibleCheck(
-                    target,
-                    output,
-                    sample["meta_y"],
-                    f"{savename}",
-                    idx,
-                    device=self.do_animate,
-                )
-
             # decode  if there is an output encoder
             if output_encoder is not None:
                 # decode the target
@@ -263,10 +252,6 @@ class Trainer(object):
                 )
             # compute the loss
             loss = self.loss(output.float(), target)
-            # if len(loss.shape) > 1:
-            #     logger.debug(f"Loss Shape: {loss.shape}")
-            #     logger.debug(f"Loss Value: {loss.item()}")
-
             # add regularizer for MNO
             if self.params.NN == "MNO":
                 diss_loss = self.dissipativeRegularizer(data, self.device)
@@ -277,6 +262,8 @@ class Trainer(object):
             self.optimizer.step()
             if hasattr(self, "scheduler"):
                 self.scheduler.step()
+            train_loss += loss.item()
+            self.optimizer.zero_grad(set_to_none=True)
             if (
                 loss.item() - train_loss
             ) ** 2 >= 20 * train_loss**2 and batch_idx > 0:
@@ -292,10 +279,86 @@ class Trainer(object):
                 counter += 1
             if counter >= 0.5 * self.params.batch_size:
                 raise ValueError("Training loss is growing too much.")
-            train_loss += loss.item()
-            self.optimizer.zero_grad(set_to_none=True)
 
         return train_loss, loss
+
+    def recurrent_loop(self, train_loader, output_encoder=None, epoch: int = 1):
+        step = self.params.T_in
+        # initialize loss
+        train_loss = 0
+        full_loss = 0
+        # select a random batch
+        rand_point = np.random.randint(0, len(train_loader))
+        torch.autograd.set_detect_anomaly(True)
+        for batch_idx, sample in enumerate(train_loader):
+            loss = 0
+            data = sample["x"].to(self.device).squeeze()
+            target = sample["y"].to(self.device)
+            for t in range(0, target.shape[-1], step):
+                targ_t = target[..., t : t + step].squeeze()
+                pred_t = self.model(data)
+
+                loss += self.loss(pred_t.float(), targ_t)
+                if t == 0:
+                    pred = pred_t.unsqueeze(-1)
+                else:
+                    pred = torch.cat((pred, pred_t.unsqueeze(-1)), dim=-1)
+                data = pred_t
+
+            train_loss += loss.item()
+            full_loss += self.full_loss(pred, target).item()
+            # Backpropagate the loss
+            self.optimizer.zero_grad(set_to_none=True)
+
+            loss.backward()
+            self.optimizer.step()
+
+            if hasattr(self, "scheduler"):
+                self.scheduler.step()
+            if batch_idx == rand_point and epoch == self.save_every:
+                savename = f"{self.plot_path}/Train_decoded_b{batch_idx}_ep{epoch}"
+                dataVisibleCheck(
+                    target,
+                    pred,
+                    sample["meta_y"],
+                    f"{savename}",
+                    0,
+                    device=self.do_animate,
+                )
+        return train_loss, loss
+
+    def recurrent_eval(self, test_loader, output_encoder=None, epoch: int = 1):
+        step = self.params.T_in
+        # initialize loss
+        test_h1 = 0
+        test_l2 = 0
+        full_test = 0
+        # select a random batch
+        with torch.no_grad():
+            for batch_idx, sample in enumerate(test_loader):
+                h1_loss = 0
+                l2_loss = 0
+                data = sample["x"].to(self.device).squeeze(-1)
+                target = sample["y"].to(self.device)
+                for t in range(0, target.shape[-1], step):
+                    targ_t = target[..., t : t + step].squeeze(-1)
+                    pred_t = self.model(data)
+
+                    h1_loss += self.test_loss_h1(pred_t.float(), targ_t)
+                    l2_loss += self.test_loss_lp(pred_t.float(), targ_t)
+
+                    if t == 0:
+                        pred = pred_t.unsqueeze(-1)
+                    else:
+                        pred = torch.cat((pred, pred_t.unsqueeze(-1)), dim=-1)
+                    data = pred_t
+
+                test_h1 += h1_loss.item()
+                test_l2 += l2_loss.item()
+
+                full_test += self.full_loss(pred, target).item()
+
+        return test_h1, test_l2, full_test
 
     def _save_snapshot(self, epoch):
         snapshot = {}
@@ -331,6 +394,9 @@ class Trainer(object):
         if self.params.use_ddp:
             test_data_length //= self.num_gpus
             train_data_length //= self.num_gpus
+        if "RNN" in self.params.NN:
+            test_data_length *= self.params.T
+            train_data_length *= self.params.T
 
         logger.debug(f"len(test_loader.dataset) = {test_data_length}")
         logger.debug(f"len(train_loader.dataset) = {train_data_length}")
@@ -342,7 +408,10 @@ class Trainer(object):
 
             # set to train mode
             self.model.train()
-            train_loss, _ = self.batchLoop(train_loader, output_encoder, epoch)
+            if "RNN" in self.params.NN:
+                train_loss, _ = self.recurrent_loop(train_loader, output_encoder, epoch)
+            else:
+                train_loss, _ = self.batchLoop(train_loader, output_encoder, epoch)
 
             if (
                 self.params.use_ddp
@@ -356,8 +425,13 @@ class Trainer(object):
             self.model.eval()
             test_lp = 0
             test_h1 = 0
-            with torch.no_grad():
+            if self.params.NN == "RNN":
+                test_h1, test_lp, full_test = self.recurrent_eval(
+                    test_loader, output_encoder, epoch
+                )
+            else:
                 rand_point = np.random.randint(0, test_data_length)
+
                 for batch_idx, sample in enumerate(test_loader):
                     data = sample["x"].to(self.device)
                     target = sample["y"].to(self.device)
@@ -371,7 +445,9 @@ class Trainer(object):
                     if (batch_idx == rand_point and epoch == self.save_every) or (
                         batch_idx == rand_point and loss_ratio >= 3
                     ):
-                        idx = np.random.randint(0, data.shape[0] - 1)
+                        idx = 0
+                        if data.shape[0] > 1:
+                            idx = np.random.randint(0, data.shape[0] - 1)
                         savename = f"{self.plot_path}/Test_decoded_R{loss_ratio:1.2f}_ep{epoch}"
                         dataVisibleCheck(
                             target,
@@ -441,8 +517,12 @@ class Trainer(object):
 
         # compute RMSE
         rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=dims_to_rmse))
+        rmse_mean = torch.mean(rmse)
         # normalize RMSE
         rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
+        nrmse_mean = torch.mean(rmse)
+        wandb.log({"RMSE": rmse_mean, "Relative RMSE": nrmse_mean})
+
         # compute RMSE for each time step
         relative_rmse = torch.sqrt(torch.mean((in_data - truth) ** 2, dim=dims_to_rmse))
         relative_rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
@@ -604,6 +684,175 @@ class Trainer(object):
             f"{savename}",
         )
 
+    def log_RMSE(self, prediction, truth):
+        num_dims = len(prediction.shape)
+        dims_to_rmse = tuple(range(-num_dims + 1, 0))
+
+        # compute RMSE
+        rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=dims_to_rmse))
+        rmse_mean = torch.mean(rmse)
+        # normalize RMSE
+        rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
+        nrmse_mean = torch.mean(rmse)
+        wandb.log({"RMSE": rmse_mean, "Relative RMSE": nrmse_mean})
+
+    def evaluate_RNN(
+        self,
+        data_loader: torch.utils.data.DataLoader,
+        input_encoder=None,
+        output_encoder=None,
+        savename: str = "",
+        do_animate=True,
+    ) -> None:
+        """
+        Evaluates the model on the given data_loader and saves the results to a .mat
+        Args:
+            data_loader (torch.utils.data.DataLoader): The data loader to evaluate the
+            model on.
+            input_encoder (optional): The input encoder to use. Defaults to None.
+            output_encoder (optional): The output encoder to use. Defaults to None.
+            savename (str, optional): The name to use when saving the results to a .mat
+            savename (str, optional): The name to use when saving the results to a .mat
+                                      Defaults to "".
+        Returns:
+            None
+        """
+        # TODO: TEST THIS FUNCTION
+        self.model.eval()
+        data_length = len(data_loader.dataset)
+        if "RNN" in self.params.NN:
+            data_length *= self.params.T
+        # create a tensor to store the prediction
+        num_samples = len(data_loader.dataset)
+        sample = next(iter(data_loader))
+        data = sample["x"].to(self.device)
+        target = sample["y"].to(self.device)
+        lentime = len(sample["meta_y"]["time"]) - 1
+        size = [num_samples] + [d for d in target.shape if d != 1]
+
+        # initialize
+        pred = torch.zeros(size)
+        roll = torch.zeros(size)
+        truth = torch.zeros(size)
+        in_data = torch.zeros(size)
+
+        # in_data = torch.zeros([*size[:-1], self.params.T_in])
+
+        time_data = torch.zeros(num_samples, lentime)
+
+        test_pred = 0
+        test_roll = 0
+        full_test = 0
+        roll_t = 0
+        step = self.params.T_in
+
+        mass = "null"
+        mass_list = []
+        rand_point = np.random.randint(0, len(data_loader))
+        transform = None
+        if self.params.positional_encoding:
+            transform = PositionalEmbedding2D(self.params.grid_boundaries, 0)
+        with torch.no_grad():
+            for batchidx, sample in enumerate(data_loader):
+                loss_pred = 0
+                loss_roll = 0
+
+                meta_data = sample["meta_x"]
+                cur_mass = meta_data["mass"][0]
+                target = sample["y"].to(self.device)
+                data = sample["x"].to(self.device).squeeze(-1)
+                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
+                for t in range(0, target.shape[-1], step):
+                    targ_t = target[..., t : t + step].squeeze(-1)
+                    pred_t = self.model(data)
+                    if cur_mass != mass:
+                        roll_t = pred_t.clone()
+                        logging.info(f"Updating mass from M{mass} to M{cur_mass}")
+                        print(f"Updating mass from M{mass} to M{cur_mass}")
+                        mass = cur_mass
+                        roll_steps = 1
+                    else:
+                        # apply the model to previous output
+                        roll_t = self.model(roll_t)
+                        roll_steps += 1
+
+                    if t == 0:
+                        pred_full = pred_t.unsqueeze(-1)
+                        roll_full = roll_t.unsqueeze(-1)
+                    else:
+                        pred_full = torch.cat((pred_full, pred_t.unsqueeze(-1)), dim=-1)
+                        roll_full = torch.cat((roll_full, roll_t.unsqueeze(-1)), dim=-1)
+
+                    loss_pred += self.loss(pred_t.float(), targ_t)
+                    loss_roll += self.loss(roll_t.float(), targ_t)
+
+                    data = pred_t
+
+                    nan_roll = torch.isnan(roll_t).any()
+                    inf_roll = torch.isnan(roll_t).any()
+                    avg_roll = roll_t.mean()
+                    avg_pred = pred_t.mean()
+                    mean_cond = (avg_roll <= 1e-6) and (
+                        torch.abs(avg_pred - avg_roll) >= 1e-6
+                    )
+                    roll_err = nan_roll or inf_roll or (mean_cond)
+
+                    if roll_err and roll_steps > 1:
+                        print(
+                            f"WARNING: ROLLING after {roll_steps} steps is no longer only positive float."
+                        )
+                        print(
+                            f"For t= {t}, batchidx= {batchidx}, mass = {mass}, cur_mass = {cur_mass}"
+                        )
+                        print(f"isnan: {nan_roll}")
+                        print(f"isinf: {inf_roll}")
+                        print(f"avg: {avg_roll}")
+                        print(f"Avg pred: {pred_t.mean()}")
+                        print("Resetting the value:")
+                        roll_t = pred_t.clone()
+                        roll_steps = 1
+
+                test_pred += loss_pred.item()
+                test_roll += loss_roll.item()
+                wandb.log(
+                    {
+                        "Valid-Batch Loss": loss_pred.item(),
+                        "Roll-Batch Loss": loss_roll.item(),
+                    }
+                )
+                full_test += self.full_loss(pred_full, target).item()
+                # assign the values to the tensors
+                pred[batchidx] = pred_full
+                in_data[batchidx] = torch.cat(
+                    (sample["x"].to(self.device), pred_full[..., :-1]), dim=-1
+                )
+                truth[batchidx] = target
+                roll[batchidx] = roll_full
+
+            # normalize test loss
+            test_pred /= data_length
+            test_roll /= data_length
+            print(f"Length of Valid Data: {len(data_loader.dataset)}")
+            # print the final loss
+            num_trained = self.params.N * self.params.split[0]
+            print(f"Final Loss for {int(num_trained)}: {test_pred} ")
+            print(f"Reapply Loss: {test_roll}")
+            wandb.log({"Valid Loss": test_pred, "Reapply Loss": test_roll})
+
+        time_data = time_data.flatten()
+
+        if self.params.doPlot:
+            self.plot(
+                time_data=time_data,
+                prediction=pred,
+                in_data=in_data,
+                truth=truth,
+                roll=roll,
+                mass=mass_list,
+                savename=f"{savename}_results",
+                do_animate=do_animate,
+            )
+
     def evaluate(
         self,
         data_loader: torch.utils.data.DataLoader,
@@ -638,18 +887,20 @@ class Trainer(object):
         # initialize
         pred = torch.zeros(size)
         roll = torch.zeros(size)
-        in_data = torch.zeros(size)
         truth = torch.zeros(size)
-        test_loss = 0
+        in_data = torch.zeros(size)
+        time_data = torch.zeros(num_samples, lentime)
+
         re_loss = 0
+        test_loss = 0
         roll_batch = 0
-        rand_point = np.random.randint(0, len(data_loader))
+
         mass = "null"
         mass_list = []
-        time_data = torch.zeros(num_samples, lentime)
+        rand_point = np.random.randint(0, len(data_loader))
         transform = None
         if self.params.positional_encoding:
-            transform = PositionalEmbedding(self.params.grid_boundaries, 0)
+            transform = PositionalEmbedding2D(self.params.grid_boundaries, 0)
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
@@ -663,8 +914,10 @@ class Trainer(object):
                     logging.info(f"Updating mass from M{mass} to M{cur_mass}")
                     print(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
+                    roll_steps = 1
                 elif batchidx > 0:
                     # apply the model to previous output
+                    roll_steps += 1
                     roll_batch = self.model(roll_batch)
 
                 # decode  if there is an output encoder
@@ -672,7 +925,7 @@ class Trainer(object):
                     # decode the output
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
-                    roll_batch = output_encoder.decode(roll_batch)
+                    roll_out = output_encoder.decode(roll_batch)
                 if batchidx == rand_point:
                     save_plot = f"{self.plot_path}/Valid_"
                     idx = 0
@@ -686,15 +939,38 @@ class Trainer(object):
                     )
                     dataVisibleCheck(
                         target,
-                        roll_batch,
+                        roll_out,
                         sample["meta_y"],
                         f"{save_plot}rolling",
                         idx,
                         device=self.do_animate,
                     )
 
+                nan_roll = torch.isnan(roll_out).any()
+                inf_roll = torch.isnan(roll_out).any()
+                avg_roll = roll_out.mean()
+                avg_pred = output.mean()
+                mean_cond = (avg_roll <= 1e-6) and (
+                    torch.abs(avg_pred - avg_roll) >= 1e-6
+                )
+                roll_err = nan_roll or inf_roll or (mean_cond)
+
+                if roll_err and roll_steps > 1:
+                    print(
+                        f"WARNING: ROLLING after {roll_steps} steps is no longer only positive float."
+                    )
+                    print(
+                        f"For batchidx= {batchidx}, mass = {mass}, cur_mass = {cur_mass}"
+                    )
+                    print(f"isnan: {nan_roll}")
+                    print(f"isinf: {inf_roll}")
+                    print(f"avg: {avg_roll}")
+                    print(f"Avg pred: {output.mean()}")
+                    print("Resetting the value:")
+                    mass = "Null"
+                    roll_steps = 1
                 # compute the loss
-                re_loss += self.test_loss_lp(roll_batch, target).item()
+                re_loss += self.test_loss_lp(roll_out, target).item()
                 test_loss += self.test_loss_lp(output, target).item()
                 if transform is not None:
                     data = data[:, 0:5, ...]
@@ -705,9 +981,10 @@ class Trainer(object):
                 pred[batchidx] = output
                 in_data[batchidx] = data
                 truth[batchidx] = target
-                roll[batchidx] = roll_batch
-                if input_encoder is not None:
-                    roll_batch = input_encoder.encode(roll_batch)
+                roll[batchidx] = roll_out
+
+                # if input_encoder is not None:
+                #     roll_batch = input_encoder.encode(roll_out)
                 if transform is not None:
                     roll_batch = transform(roll_batch[0, ...].cpu()).to(self.device)
                     roll_batch = roll_batch.unsqueeze(0)
@@ -721,22 +998,21 @@ class Trainer(object):
             # print the final loss
             num_trained = self.params.N * self.params.split[0]
             print(f"Final Loss for {int(num_trained)}: {test_loss} ")
+            print(f"Reapply Loss: {re_loss}")
+
             wandb.log({"Valid Loss": test_loss, "Reapply Loss": re_loss})
 
-        print(
-            "Saving data as:",
-            f"{os.getcwd()} results/{self.params.path}/data/{savename}.mat",
-        )
         # flatten the time for plotting
         time_data = time_data.flatten()
 
         if len(savename) > 0:
+            data_save = f"results/{self.params.path}/data/{savename}.mat"
             print(
                 "Saving data as:",
-                f"{os.getcwd()} results/{self.params.path}/data/{savename}.mat",
+                f"{os.getcwd()} {data_save}",
             )
             scipy.io.savemat(
-                f"results/{self.params.path}/data/{savename}.mat",
+                data_save,
                 mdict={
                     "input": in_data.cpu().numpy(),
                     "pred": pred.cpu().numpy(),
@@ -752,6 +1028,6 @@ class Trainer(object):
                 truth=truth,
                 roll=roll,
                 mass=mass_list,
-                savename=savename,
+                savename=f"{savename}_results",
                 do_animate=do_animate,
             )

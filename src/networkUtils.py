@@ -43,7 +43,7 @@ def initializeNetwork(params) -> nn.Module:
     """
     model = nn.Module()
     # TODO: allow MLP to be input parameter
-    if params.NN == "FNO2d":
+    if params.NN == "FNO2d" or params.NN == "RNN":
         model = FNO2d(
             n_modes_height=params.modes,
             n_modes_width=params.modes,
@@ -69,6 +69,7 @@ def initializeNetwork(params) -> nn.Module:
             preactivation=params.preactivation,
             n_layers=params.n_layers,
             skip=params.skip_type,
+            
         )
     elif params.NN == "MNO":
         model = FNO2d(

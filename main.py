@@ -95,7 +95,7 @@ def main(params):
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
-    Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=1)
+    Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=20)
     Trainer.train(trainLoader, testLoader, output_encoder)
 
     ################################################################
@@ -103,12 +103,20 @@ def main(params):
     ################################################################
     logging.info("........Testing neural network........")
     # test neural network
-    Trainer.evaluate(
-        validLoader,
-        output_encoder=output_encoder,
-        input_encoder=input_encoder,
-        savename="ValidationData",
-    )
+    if params.NN == "RNN":
+        Trainer.evaluate_RNN(
+            validLoader,
+            output_encoder=output_encoder,
+            input_encoder=input_encoder,
+            savename="ValidationData",
+        )
+    else:
+        Trainer.evaluate(
+            validLoader,
+            output_encoder=output_encoder,
+            input_encoder=input_encoder,
+            savename="ValidationData",
+        )
     print(f"Output folder for {path}")
     os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")
     run.finish()

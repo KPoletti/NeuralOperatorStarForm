@@ -142,12 +142,20 @@ def main(params):
         savename = "ValidationData"
         logging.info("........Testing neural network........")
         # test neural network
-        Trainer.evaluate(
-            validLoader,
-            output_encoder=output_encoder,
-            input_encoder=input_encoder,
-            savename=savename,
-        )
+        if params.NN == "RNN":
+            Trainer.evaluate_RNN(
+                validLoader,
+                output_encoder=output_encoder,
+                input_encoder=input_encoder,
+                savename=savename,
+            )
+        else:
+            Trainer.evaluate(
+                validLoader,
+                output_encoder=output_encoder,
+                input_encoder=input_encoder,
+                savename=savename,
+            )
     else:
         print("we not plotting")
 
