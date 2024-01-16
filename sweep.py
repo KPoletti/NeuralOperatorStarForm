@@ -116,13 +116,22 @@ def main(config=None):
         ################################################################
         logger.info("........Testing neural network........")
         # test neural network
-        Trainer.evaluate(
-            validLoader,
-            output_encoder=output_encoder,
-            input_encoder=input_encoder,
-            savename="",
-            do_animate=False,
-        )
+        if params.NN == "RNN":
+            Trainer.evaluate_RNN(
+                validLoader,
+                output_encoder=output_encoder,
+                input_encoder=input_encoder,
+                savename="",
+                do_animate=False,
+            )
+        else:
+            Trainer.evaluate(
+                validLoader,
+                output_encoder=output_encoder,
+                input_encoder=input_encoder,
+                savename="",
+                do_animate=False,
+            )
         print(f"Output folder for {path}")
         os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")
 

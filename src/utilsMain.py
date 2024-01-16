@@ -140,6 +140,8 @@ def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
     # if "GravColl" in params.data_name and "FNO2d" in params.NN:
     if "FNO2d" in params.NN:
         return data[..., 0, :]
+    elif "RNN2d" in params.NN:
+        return data[..., 0:1, :]
     return data
 
 

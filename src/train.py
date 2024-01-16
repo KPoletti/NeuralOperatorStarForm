@@ -163,6 +163,11 @@ class Trainer(object):
             T_max=iterations,
             eta_min=1e-8,
         )
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            self.optimizer,
+            T_0=iterations,
+            eta_min=1e-8,
+        )
         # define a test loss function that will be the same regardless of training
         self.test_loss_lp = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         self.test_loss_h1 = H1Loss(d=self.params.d, reduce_dims=(0, 1))
@@ -292,10 +297,10 @@ class Trainer(object):
         torch.autograd.set_detect_anomaly(True)
         for batch_idx, sample in enumerate(train_loader):
             loss = 0
-            data = sample["x"].to(self.device).squeeze()
+            data = sample["x"].to(self.device).squeeze(-1)
             target = sample["y"].to(self.device)
             for t in range(0, target.shape[-1], step):
-                targ_t = target[..., t : t + step].squeeze()
+                targ_t = target[..., t : t + step].squeeze(-1)
                 pred_t = self.model(data)
 
                 loss += self.loss(pred_t.float(), targ_t)
@@ -429,6 +434,7 @@ class Trainer(object):
                 test_h1, test_lp, full_test = self.recurrent_eval(
                     test_loader, output_encoder, epoch
                 )
+
             else:
                 rand_point = np.random.randint(0, test_data_length)
 
@@ -521,7 +527,7 @@ class Trainer(object):
         # normalize RMSE
         rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
         nrmse_mean = torch.mean(rmse)
-        wandb.log({"RMSE": rmse_mean, "Relative RMSE": nrmse_mean})
+        # wandb.log({"RMSE": rmse_mean, "Relative RMSE": nrmse_mean})
 
         # compute RMSE for each time step
         relative_rmse = torch.sqrt(torch.mean((in_data - truth) ** 2, dim=dims_to_rmse))
@@ -664,7 +670,7 @@ class Trainer(object):
                 out_times=time_data,
                 mass="",
             )
-
+        self.log_RMSE(prediction, truth)
         self.rmse_plot(
             ind,
             num_dims,
@@ -762,19 +768,19 @@ class Trainer(object):
                 target = sample["y"].to(self.device)
                 data = sample["x"].to(self.device).squeeze(-1)
                 time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
+                if cur_mass != mass:
+                    roll_t = data.clone()
+                    logging.info(f"Updating mass from M{mass} to M{cur_mass}")
+                    print(f"Updating mass from M{mass} to M{cur_mass}")
+                    mass = cur_mass
+                    roll_steps = 1
+                else:
+                    roll_steps += 1
                 for t in range(0, target.shape[-1], step):
                     targ_t = target[..., t : t + step].squeeze(-1)
                     pred_t = self.model(data)
-                    if cur_mass != mass:
-                        roll_t = pred_t.clone()
-                        logging.info(f"Updating mass from M{mass} to M{cur_mass}")
-                        print(f"Updating mass from M{mass} to M{cur_mass}")
-                        mass = cur_mass
-                        roll_steps = 1
-                    else:
-                        # apply the model to previous output
-                        roll_t = self.model(roll_t)
-                        roll_steps += 1
+                    # apply the model to previous output
+                    roll_t = self.model(roll_t)
 
                     if t == 0:
                         pred_full = pred_t.unsqueeze(-1)
@@ -788,38 +794,17 @@ class Trainer(object):
 
                     data = pred_t
 
-                    nan_roll = torch.isnan(roll_t).any()
-                    inf_roll = torch.isnan(roll_t).any()
-                    avg_roll = roll_t.mean()
-                    avg_pred = pred_t.mean()
-                    mean_cond = (avg_roll <= 1e-6) and (
-                        torch.abs(avg_pred - avg_roll) >= 1e-6
-                    )
-                    roll_err = nan_roll or inf_roll or (mean_cond)
-
-                    if roll_err and roll_steps > 1:
-                        print(
-                            f"WARNING: ROLLING after {roll_steps} steps is no longer only positive float."
-                        )
-                        print(
-                            f"For t= {t}, batchidx= {batchidx}, mass = {mass}, cur_mass = {cur_mass}"
-                        )
-                        print(f"isnan: {nan_roll}")
-                        print(f"isinf: {inf_roll}")
-                        print(f"avg: {avg_roll}")
-                        print(f"Avg pred: {pred_t.mean()}")
-                        print("Resetting the value:")
-                        roll_t = pred_t.clone()
-                        roll_steps = 1
-
+                if roll_steps == 5:
+                    mass = "Null"
+                    roll_steps = 1
                 test_pred += loss_pred.item()
                 test_roll += loss_roll.item()
-                wandb.log(
-                    {
-                        "Valid-Batch Loss": loss_pred.item(),
-                        "Roll-Batch Loss": loss_roll.item(),
-                    }
-                )
+                # wandb.log(
+                #     {
+                #         "Valid-Batch Loss": loss_pred.item(),
+                #         "Roll-Batch Loss": loss_roll.item(),
+                #     }
+                # )
                 full_test += self.full_loss(pred_full, target).item()
                 # assign the values to the tensors
                 pred[batchidx] = pred_full
@@ -840,7 +825,28 @@ class Trainer(object):
             wandb.log({"Valid Loss": test_pred, "Reapply Loss": test_roll})
 
         time_data = time_data.flatten()
+        print(f"pred shape: {pred.shape}")
+        if len(savename) > 0:
+            data_save = f"results/{self.params.path}/data/{savename}.mat"
+            print(
+                "Saving data as:",
+                f"{os.getcwd()} {data_save}",
+            )
+            scipy.io.savemat(
+                data_save,
+                mdict={
+                    "input": in_data.cpu().numpy(),
+                    "pred": pred.cpu().numpy(),
+                    "target": truth.cpu().numpy(),
+                    "rePred": roll.cpu().numpy(),
+                },
+            )
 
+        if "RNN" in self.params.NN and len(pred.shape) == 4:
+            pred = pred.unsqueeze(1)
+            in_data = in_data.unsqueeze(1)
+            truth = truth.unsqueeze(1)
+            roll = roll.unsqueeze(1)
         if self.params.doPlot:
             self.plot(
                 time_data=time_data,
@@ -946,27 +952,7 @@ class Trainer(object):
                         device=self.do_animate,
                     )
 
-                nan_roll = torch.isnan(roll_out).any()
-                inf_roll = torch.isnan(roll_out).any()
-                avg_roll = roll_out.mean()
-                avg_pred = output.mean()
-                mean_cond = (avg_roll <= 1e-6) and (
-                    torch.abs(avg_pred - avg_roll) >= 1e-6
-                )
-                roll_err = nan_roll or inf_roll or (mean_cond)
-
-                if roll_err and roll_steps > 1:
-                    print(
-                        f"WARNING: ROLLING after {roll_steps} steps is no longer only positive float."
-                    )
-                    print(
-                        f"For batchidx= {batchidx}, mass = {mass}, cur_mass = {cur_mass}"
-                    )
-                    print(f"isnan: {nan_roll}")
-                    print(f"isinf: {inf_roll}")
-                    print(f"avg: {avg_roll}")
-                    print(f"Avg pred: {output.mean()}")
-                    print("Resetting the value:")
+                if roll_steps == 5:
                     mass = "Null"
                     roll_steps = 1
                 # compute the loss
@@ -1004,7 +990,6 @@ class Trainer(object):
 
         # flatten the time for plotting
         time_data = time_data.flatten()
-
         if len(savename) > 0:
             data_save = f"results/{self.params.path}/data/{savename}.mat"
             print(
