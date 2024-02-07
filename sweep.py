@@ -8,6 +8,7 @@ import torch
 import numpy as np
 import src.networkUtils as myNet
 import src.train as myTrain
+from neuralop.utils import count_model_params
 import logging
 import time
 import wandb
@@ -93,6 +94,7 @@ def main(config=None):
         model = myNet.initializeNetwork(params)
         # params.batch_size = torch.cuda.device_count() * params.batch_size
         model = model.to(device)
+        wandb.config["Model-Num-Params"] = count_model_params(model)
         if params.encoder:
             output_encoder.cuda()
             input_encoder.cuda()

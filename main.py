@@ -9,8 +9,15 @@ import src.networkUtils as myNet
 import src.train as myTrain
 from src.utilsMain import prepareDataForTraining
 from src.parameterUtils import convertParamsToJSON
+from neuralop.utils import count_model_params
+
 import torch
+import torch.nn as nn
 import wandb
+from src.dissipative_utils import (
+    sample_uniform_spherical_shell,
+    linear_scale_dissipative_target,
+)
 
 
 def main(params):
@@ -22,6 +29,20 @@ def main(params):
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
+    if "MNO" in params.NN:
+        params.out_dim = 1
+        params.dissloss = nn.MSELoss(reduction="mean")
+        params.sampling_fn = sample_uniform_spherical_shell
+        params.target_fn = linear_scale_dissipative_target
+        params.radius = 156.25 * params.S  # radius of inner ball
+        params.scale_down = 0.1  # rate at which to linearly scale down inputs
+        params.loss_weight = (
+            0.01 * params.S**2
+        )  # normalized by L2 norm in function space
+        params.radii = [
+            params.radius,
+            (525 * params.S) + params.radius,
+        ]  # inner and outer radii, in L2 norm of function space
     run = wandb.init(project=params.data_name, config=paramsJSON)
 
     ################################################################
@@ -33,7 +54,7 @@ def main(params):
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
-        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
+        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_Fact{[params.factorization]}"
     )
     params.path = path
     # check if path exists
@@ -82,6 +103,8 @@ def main(params):
     netTime = time.time()
     # create neural network
     model = myNet.initializeNetwork(params)
+    wandb.config["Model-Num-Params"] = count_model_params(model)
+
     # params.batch_size = torch.cuda.device_count() * params.batch_size
     model = model.to(device)
     if params.encoder:

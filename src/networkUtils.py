@@ -12,6 +12,7 @@ Classes:
 Exceptions:
     None
 """
+
 import logging
 from neuralop.models import FNO2d, FNO3d
 
@@ -83,6 +84,12 @@ def initializeNetwork(params) -> nn.Module:
             preactivation=params.preactivation,
             n_layers=params.n_layers,
             skip=params.skip_type,
+            fno_block_precision="mixed",
+            stablizer="tanh",
+            factorization=params.factorization,
+            rank=params.rank,
+            joint_factorization=True,
+            norm=params.norm,
         )
     elif params.NN == "MNO":
         model = FNO2d(
@@ -132,5 +139,7 @@ def initializeNetwork(params) -> nn.Module:
             norm=False,
         )
     logger.debug(model)
+    if params.level == "DEBUG":
+        print(model)
 
     return model

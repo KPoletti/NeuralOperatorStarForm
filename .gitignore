@@ -22,3 +22,6 @@ input_*.py
 src/trainRefactor.py
 *stats
 *txt
+FNO_Grav_Turb_job
+sweep_Turb_RNN
+RNN_MHD_Turb_job

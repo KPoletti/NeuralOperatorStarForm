@@ -2,6 +2,7 @@
 This module contains utility functions for the Neural Operator StarForm project.
 Functions include data splitting, average pooling, and log10 normalization.
 """
+
 import logging
 from dataclasses import dataclass
 
@@ -138,7 +139,7 @@ def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
         data: torch.tensor data after reduction
     """
     # if "GravColl" in params.data_name and "FNO2d" in params.NN:
-    if "FNO2d" in params.NN:
+    if "FNO2d_dens" in params.NN or "MNO" in params.NN:
         return data[..., 0, :]
     elif "RNN2d" in params.NN:
         return data[..., 0:1, :]
@@ -261,7 +262,7 @@ def timestepSplit(
 
         # find the keys that correspond to the time step to use t+{dN-1}
         keys_a = [key for key in keys if int(key.split("+")[1]) <= params.T_in - 1]
-        keys_u = [key for key in keys if int(key.split("+")[1]) >= params.T_in - 1]
+        keys_u = [key for key in keys if int(key.split("+")[1]) > params.T_in - 1]
         # split the dataframe
         data_info_a = data_info[keys_a]
         data_info_u = data_info[keys_u]
@@ -405,6 +406,8 @@ def permuteFNO2d(
         torch.tensor: permuted data
     """
     # data = data.reshape(size, gridsize, gridsize, params.T_in)
+    data = data.squeeze()
+    print("WARNING FNO2D NO LONGER JUST DENSITY")
     data = data.permute(0, 3, 1, 2)
     return data
 
@@ -448,7 +451,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder: initialized input encoder
         output_encoder: initialized output encoder
     """
-    if "FNO2d" in params.NN or "Ints" in params.DATA_PATH:
+    if "FNO2d" in params.NN or "MNO" in params.NN or "Ints" in params.DATA_PATH:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
     elif "GravColl" in params.data_name or "Turb" in params.data_name:
@@ -556,27 +559,33 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         train_data_u,
         dfTolist(train_time_a),
         dfTolist(train_time_u),
-        transform_x=PositionalEmbedding2D(params.grid_boundaries, 0)
-        if params.positional_encoding
-        else None,
+        transform_x=(
+            PositionalEmbedding2D(params.grid_boundaries, 0)
+            if params.positional_encoding
+            else None
+        ),
     )
     tests_dataset = TensorDataset(
         tests_data_a,
         tests_data_u,
         dfTolist(tests_time_a),
         dfTolist(tests_time_u),
-        transform_x=PositionalEmbedding2D(params.grid_boundaries, 0)
-        if params.positional_encoding
-        else None,
+        transform_x=(
+            PositionalEmbedding2D(params.grid_boundaries, 0)
+            if params.positional_encoding
+            else None
+        ),
     )
     valid_dataset = TensorDataset(
         valid_data_a,
         valid_data_u,
         dfTolist(valid_time_a),
         dfTolist(valid_time_u),
-        transform_x=PositionalEmbedding2D(params.grid_boundaries, 0)
-        if params.positional_encoding
-        else None,
+        transform_x=(
+            PositionalEmbedding2D(params.grid_boundaries, 0)
+            if params.positional_encoding
+            else None
+        ),
     )
     shuffle_type = True
     train_sampler = None

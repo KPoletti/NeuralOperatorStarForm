@@ -32,7 +32,7 @@ def correctParamsForNewData(params, datapath):
     params.TRAIN_PATH = f"{datapath}.pt"
     params.TIME_PATH = f"{datapath}.h5"
     params.N = pd.read_hdf(params.TIME_PATH, "table").shape[0]
-    params.split = [0, 0, 1]
+    params.split = [0, 0, 0.1]
     return params
 
 
@@ -114,7 +114,7 @@ def main(path, datapath, do_animate):
     except ValueError:
         print("WARNING: Virial parameter could not be converted to float")
         wandb.log({"Virial": VP, "axis": axis})
-        
+
     params.split = [0, 0, 0.1]
     (
         validLoader,
@@ -148,14 +148,21 @@ def main(path, datapath, do_animate):
     # test neural network
     # print(model.state_dict())
     Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=20)
-
-    Trainer.evaluate(
-        validLoader,
-        output_encoder=output_encoder,
-        input_encoder=input_encoder,
-        savename="ValidationData_Alt_Data",
-        do_animate=do_animate,
-    )
+    if "RNN" in params.NN:
+        Trainer.evaluate_RNN(
+            validLoader,
+            output_encoder=output_encoder,
+            input_encoder=input_encoder,
+            savename="ValidationData_Alt_Data",
+        )
+    else:
+        Trainer.evaluate(
+            validLoader,
+            output_encoder=output_encoder,
+            input_encoder=input_encoder,
+            savename="ValidationData_Alt_Data",
+            do_animate=do_animate,
+        )
 
 
 if __name__ == "__main__":

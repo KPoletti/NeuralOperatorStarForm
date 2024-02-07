@@ -4,6 +4,7 @@ model.
 It also contains utility functions for checking the visibility of data and creating
 animations.
 """
+
 import logging
 import os
 import re
@@ -22,6 +23,7 @@ from torch import nn
 
 from neuralop import LpLoss, H1Loss
 from neuralop.datasets.transforms import PositionalEmbedding2D
+from neuralop.utils import count_model_params
 
 
 sns.set_color_codes(palette="deep")
@@ -128,7 +130,7 @@ class Trainer(object):
         self.model = model
         self.params = params
         self.device = device
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=params.lr,
             weight_decay=params.weight_decay,
@@ -147,26 +149,33 @@ class Trainer(object):
         # initialize the loss function
         ntrain = int((self.params.split[0] * self.params.N))
         self.loss = self.params.loss_fn
+        warmup_ep = self.params.epochs * 5 // 100
+
         iterations = (
-            self.params.epochs
+            (self.params.epochs - warmup_ep)
             * (ntrain // self.params.batch_size)
             // self.params.cosine_step
+        )
+        lin_iters = (
+            warmup_ep * (ntrain // self.params.batch_size) // self.params.cosine_step
         )
         if self.params.use_ddp:
             self.num_gpus = torch.cuda.device_count()
 
         if os.path.exists(self.ckp_path) and params.use_ddp:
             self._load_snapshot(self.ckp_path)
-
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer,
-            T_max=iterations,
-            eta_min=1e-8,
+        self.scheduler1 = torch.optim.lr_scheduler.LinearLR(
+            self.optimizer, start_factor=0.1, total_iters=lin_iters
         )
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        self.scheduler2 = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             self.optimizer,
             T_0=iterations,
             eta_min=1e-8,
+        )
+        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+            self.optimizer,
+            schedulers=[self.scheduler1, self.scheduler2],
+            milestones=[lin_iters],
         )
         # define a test loss function that will be the same regardless of training
         self.test_loss_lp = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
@@ -258,7 +267,7 @@ class Trainer(object):
             # compute the loss
             loss = self.loss(output.float(), target)
             # add regularizer for MNO
-            if self.params.NN == "MNO":
+            if "MNO" in self.params.NN:
                 diss_loss = self.dissipativeRegularizer(data, self.device)
                 diss_loss_l2 += diss_loss.item()
                 loss += diss_loss
@@ -269,21 +278,22 @@ class Trainer(object):
                 self.scheduler.step()
             train_loss += loss.item()
             self.optimizer.zero_grad(set_to_none=True)
-            if (
-                loss.item() - train_loss
-            ) ** 2 >= 20 * train_loss**2 and batch_idx > 0:
-                savename = f"{self.plot_path}/Train_decoded_Jump_b{batch_idx}_ep{epoch}"
-                dataVisibleCheck(
-                    target,
-                    output,
-                    sample["meta_y"],
-                    f"{savename}target",
-                    idx,
-                    device=self.do_animate,
-                )
-                counter += 1
-            if counter >= 0.5 * self.params.batch_size:
-                raise ValueError("Training loss is growing too much.")
+            del output, target, data
+            # if (
+            #     loss.item() - train_loss
+            # ) ** 2 >= 20 * train_loss**2 and batch_idx > 0:
+            #     savename = f"{self.plot_path}/Train_decoded_Jump_b{batch_idx}_ep{epoch}"
+            #     dataVisibleCheck(
+            #         target,
+            #         output,
+            #         sample["meta_y"],
+            #         f"{savename}target",
+            #         idx,
+            #         device=self.do_animate,
+            #     )
+            #     counter += 1
+            # if counter >= 0.5 * self.params.batch_size:
+            #     raise ValueError("Training loss is growing too much.")
 
         return train_loss, loss
 
@@ -309,7 +319,7 @@ class Trainer(object):
                 else:
                     pred = torch.cat((pred, pred_t.unsqueeze(-1)), dim=-1)
                 data = pred_t
-
+                del pred_t, targ_t
             train_loss += loss.item()
             full_loss += self.full_loss(pred, target).item()
             # Backpropagate the loss
@@ -330,6 +340,7 @@ class Trainer(object):
                     0,
                     device=self.do_animate,
                 )
+            del target, data, pred
         return train_loss, loss
 
     def recurrent_eval(self, test_loader, output_encoder=None, epoch: int = 1):
@@ -465,7 +476,10 @@ class Trainer(object):
                         )
                     test_lp += self.test_loss_lp(output, target).item()
                     test_h1 += self.test_loss_h1(output, target).item()
-
+                    if "MNO" in self.params.NN:
+                        diss_loss = self.dissipativeRegularizer(data, self.device)
+                        test_lp += diss_loss.item()
+                        test_h1 += diss_loss.item()
             test_lp /= test_data_length
             test_h1 /= test_data_length
 
@@ -521,13 +535,14 @@ class Trainer(object):
         num_samples = prediction.shape[0]
         dims_to_rmse = tuple(range(-num_dims + 1, 0))
 
+        logger.debug(dims_to_rmse)
+        logger.debug(f"time_data shape: {time_data.shape}")
+        logger.debug(f"truth shape: {truth.shape}")
+
         # compute RMSE
         rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=dims_to_rmse))
-        rmse_mean = torch.mean(rmse)
         # normalize RMSE
         rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
-        nrmse_mean = torch.mean(rmse)
-        # wandb.log({"RMSE": rmse_mean, "Relative RMSE": nrmse_mean})
 
         # compute RMSE for each time step
         relative_rmse = torch.sqrt(torch.mean((in_data - truth) ** 2, dim=dims_to_rmse))
@@ -649,10 +664,16 @@ class Trainer(object):
             in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
 
         # and (n,x,y,t) flatten to (t*n, x, y)
-        prediction = prediction.squeeze().flatten(0, 1)
-        truth = truth.squeeze().flatten(0, 1)
-        roll = roll.squeeze().flatten(0, 1)
-        in_data = in_data.squeeze().flatten(0, 1)
+        if "FNO2d" in self.params.NN or num_dims < 5:
+            prediction = prediction[:, 0, ...]
+            truth = truth[:, 0, ...]
+            roll = roll[:, 0, ...]
+            in_data = in_data[:, 0, ...]
+        else:
+            prediction = prediction.squeeze().flatten(0, 1)
+            truth = truth.squeeze().flatten(0, 1)
+            roll = roll.squeeze().flatten(0, 1)
+            in_data = in_data.squeeze().flatten(0, 1)
 
         num_dims = len(prediction.shape)
         if do_animate:
@@ -662,6 +683,7 @@ class Trainer(object):
                 savePath=f"{self.plot_path}/out_",
                 out_times=time_data,
                 mass="",
+                fps=10,
             )
             Animation_true_pred_error(
                 truthData=truth,
@@ -669,8 +691,8 @@ class Trainer(object):
                 savePath=f"{self.plot_path}/roll_",
                 out_times=time_data,
                 mass="",
+                fps=10,
             )
-        self.log_RMSE(prediction, truth)
         self.rmse_plot(
             ind,
             num_dims,
@@ -691,8 +713,18 @@ class Trainer(object):
         )
 
     def log_RMSE(self, prediction, truth):
+
+        wandb.define_metric("num-params")
+        # define which metrics will be plotted against it
+        wandb.define_metric("RMSE", step_metric="num-params")
+        wandb.define_metric("Relative RMSE", step_metric="num-params")
+        size = prediction.shape
         num_dims = len(prediction.shape)
-        dims_to_rmse = tuple(range(-num_dims + 1, 0))
+        # find the first index where grid is
+
+        ind_grid = [i for i in range(num_dims) if size[i] == self.params.S]
+        dims_to_rmse = tuple(range(ind_grid[0], num_dims))
+        num = count_model_params(self.model)
 
         # compute RMSE
         rmse = torch.sqrt(torch.mean((prediction - truth) ** 2, dim=dims_to_rmse))
@@ -700,7 +732,7 @@ class Trainer(object):
         # normalize RMSE
         rmse /= torch.sqrt(torch.mean(truth**2, dim=dims_to_rmse))
         nrmse_mean = torch.mean(rmse)
-        wandb.log({"RMSE": rmse_mean, "Relative RMSE": nrmse_mean})
+        wandb.log({"num-params": num, "RMSE": rmse_mean, "Relative RMSE": nrmse_mean})
 
     def evaluate_RNN(
         self,
@@ -758,6 +790,7 @@ class Trainer(object):
         transform = None
         if self.params.positional_encoding:
             transform = PositionalEmbedding2D(self.params.grid_boundaries, 0)
+        roll_steps = 0
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 loss_pred = 0
@@ -768,14 +801,14 @@ class Trainer(object):
                 target = sample["y"].to(self.device)
                 data = sample["x"].to(self.device).squeeze(-1)
                 time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
-                if cur_mass != mass:
+                if roll_steps == 0:
                     roll_t = data.clone()
+                elif cur_mass != mass:
                     logging.info(f"Updating mass from M{mass} to M{cur_mass}")
                     print(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
-                    roll_steps = 1
-                else:
-                    roll_steps += 1
+                    roll_t = data.clone()
+                    roll_steps = 0
                 for t in range(0, target.shape[-1], step):
                     targ_t = target[..., t : t + step].squeeze(-1)
                     pred_t = self.model(data)
@@ -789,22 +822,17 @@ class Trainer(object):
                         pred_full = torch.cat((pred_full, pred_t.unsqueeze(-1)), dim=-1)
                         roll_full = torch.cat((roll_full, roll_t.unsqueeze(-1)), dim=-1)
 
-                    loss_pred += self.loss(pred_t.float(), targ_t)
-                    loss_roll += self.loss(roll_t.float(), targ_t)
+                    loss_pred += self.test_loss_lp(pred_t.float(), targ_t)
+                    loss_roll += self.test_loss_lp(roll_t.float(), targ_t)
 
                     data = pred_t
 
                 if roll_steps == 5:
-                    mass = "Null"
-                    roll_steps = 1
+                    roll_steps = 0
+                else:
+                    roll_steps += 1
                 test_pred += loss_pred.item()
                 test_roll += loss_roll.item()
-                # wandb.log(
-                #     {
-                #         "Valid-Batch Loss": loss_pred.item(),
-                #         "Roll-Batch Loss": loss_roll.item(),
-                #     }
-                # )
                 full_test += self.full_loss(pred_full, target).item()
                 # assign the values to the tensors
                 pred[batchidx] = pred_full
@@ -886,21 +914,24 @@ class Trainer(object):
         num_samples = len(data_loader.dataset)
         sample = next(iter(data_loader))
         data = sample["x"].to(self.device)
+        if input_encoder is not None:
+            data = input_encoder.decode(data)
         target = sample["y"].to(self.device)
-        lentime = len(sample["meta_x"]["time"])
+        lentime = len(sample["meta_y"]["time"])
         size = [num_samples] + [d for d in target.shape if d != 1]
+        in_size = [num_samples] + [d for d in data.shape if d != 1]
 
         # initialize
         pred = torch.zeros(size)
         roll = torch.zeros(size)
         truth = torch.zeros(size)
-        in_data = torch.zeros(size)
+        in_data = torch.zeros(in_size)
         time_data = torch.zeros(num_samples, lentime)
 
         re_loss = 0
         test_loss = 0
         roll_batch = 0
-
+        roll_steps = 0
         mass = "null"
         mass_list = []
         rand_point = np.random.randint(0, len(data_loader))
@@ -912,16 +943,19 @@ class Trainer(object):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)
                 meta_data = sample["meta_x"]
                 cur_mass = meta_data["mass"][0]
-                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
+                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"])
                 output = self.model(data)
                 # apply the model to previous output
-                if batchidx == 0 or cur_mass != mass:
+                if cur_mass != mass:
                     roll_batch = output.clone()
                     logging.info(f"Updating mass from M{mass} to M{cur_mass}")
                     print(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
                     roll_steps = 1
-                elif batchidx > 0:
+                elif roll_steps == 0:
+                    roll_batch = output.clone()
+                    roll_steps = 1
+                else:
                     # apply the model to previous output
                     roll_steps += 1
                     roll_batch = self.model(roll_batch)
@@ -953,8 +987,9 @@ class Trainer(object):
                     )
 
                 if roll_steps == 5:
-                    mass = "Null"
-                    roll_steps = 1
+                    roll_steps = 0
+                else:
+                    roll_steps += 1
                 # compute the loss
                 re_loss += self.test_loss_lp(roll_out, target).item()
                 test_loss += self.test_loss_lp(output, target).item()
@@ -964,10 +999,10 @@ class Trainer(object):
                     data = input_encoder.decode(data)
 
                 # assign the values to the tensors
-                pred[batchidx] = output
-                in_data[batchidx] = data
-                truth[batchidx] = target
-                roll[batchidx] = roll_out
+                pred[batchidx] = output.squeeze()
+                in_data[batchidx] = data.squeeze()
+                truth[batchidx] = target.squeeze()
+                roll[batchidx] = roll_out.squeeze()
 
                 # if input_encoder is not None:
                 #     roll_batch = input_encoder.encode(roll_out)
@@ -988,8 +1023,7 @@ class Trainer(object):
 
             wandb.log({"Valid Loss": test_loss, "Reapply Loss": re_loss})
 
-        # flatten the time for plotting
-        time_data = time_data.flatten()
+        self.log_RMSE(pred, truth)
         if len(savename) > 0:
             data_save = f"results/{self.params.path}/data/{savename}.mat"
             print(
@@ -999,12 +1033,15 @@ class Trainer(object):
             scipy.io.savemat(
                 data_save,
                 mdict={
+                    "time": time_data.cpu().numpy(),
                     "input": in_data.cpu().numpy(),
                     "pred": pred.cpu().numpy(),
                     "target": truth.cpu().numpy(),
                     "rePred": roll.cpu().numpy(),
                 },
             )
+        # flatten the time for plotting
+        time_data = time_data.flatten()
         if self.params.doPlot:
             self.plot(
                 time_data=time_data,

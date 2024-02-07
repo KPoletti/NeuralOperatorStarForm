@@ -12,6 +12,7 @@ import torch.distributed as dist
 from src.utilsMain import prepareDataForTraining
 from src.parameterUtils import convertParamsToJSON
 from torch.nn.parallel import DistributedDataParallel as DDP
+from neuralop.utils import count_model_params
 
 import wandb
 
@@ -46,7 +47,7 @@ def main(params):
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
-    run = wandb.init(project=params.data_name, config=paramsJSON)
+    run = wandb.init(project=params.data_name, config=paramsJSON,group="DDP",)
     print(f"Wandb saved to {run.dir}")  # type: ignore
 
     ################################################################
@@ -58,7 +59,7 @@ def main(params):
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
-        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_DDP"
+        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_Fact{params.factorization}_DDP"
     )
     params.path = path
     # check if path exists
@@ -109,6 +110,8 @@ def main(params):
     netTime = time.time()
     # create neural network
     model = myNet.initializeNetwork(params)
+    if local_rank == 0:
+        wandb.config["Model-Num-Params"] = count_model_params(model)
     params.batch_size = torch.cuda.device_count() * params.batch_size
     model = model.to(device_id)
     DDP_model = DDP(model, device_ids=[device_id])

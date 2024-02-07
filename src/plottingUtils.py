@@ -86,7 +86,7 @@ def Animation_true_pred_error(
     error_type = "absErr"
     log_axis = ""
     error2use = np.abs(truthData - predcData)
-    error_title = r"Absolute Error  $|\rho_{pred} - \rho_{true}|}$"
+    error_title = r"Absolute Error  $|\rho_{pred} - \rho_{true}|$"
 
     if "rel" in error_type:
         error2use = np.abs(truthData - predcData) / np.abs(truthData)
