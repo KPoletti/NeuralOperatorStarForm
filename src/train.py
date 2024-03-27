@@ -1,26 +1,29 @@
+""" This module contains the Trainer class, which is used for training a neural network model. It also contains utility functions for checking the visibility of data and creating animations. """
 
-""" This module contains the Trainer class, which is used for training a neural network model. It also contains utility functions for checking the visibility of data and creating animations. """ 
-import logging 
+import logging
 import os
 import re
-import time 
-from dataclasses import dataclass 
-import matplotlib.pyplot as plt 
-import numpy as np 
-import scipy 
-import seaborn as sns 
-from src.plottingUtils import createAnimation, Animation_true_pred_error 
-import torch 
-import wandb 
-from torch import nn 
-from neuralop import LpLoss, H1Loss 
-from neuralop.datasets.transforms import PositionalEmbedding2D 
-from neuralop.utils import count_model_params 
-sns.set_color_codes(palette="deep") 
-logger = logging.getLogger(__name__) 
-logging.getLogger("wandb").setLevel(logging.WARNING) 
-logging.getLogger("matplotlib").setLevel(logging.WARNING) 
-class NormalizedMSE: 
+import time
+from dataclasses import dataclass
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+import seaborn as sns
+from src.plottingUtils import createAnimation, Animation_true_pred_error
+import torch
+import wandb
+from torch import nn
+from neuralop import LpLoss, H1Loss
+from neuralop.datasets.transforms import PositionalEmbedding2D
+from neuralop.utils import count_model_params
+
+sns.set_color_codes(palette="deep")
+logger = logging.getLogger(__name__)
+logging.getLogger("wandb").setLevel(logging.WARNING)
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
+
+class NormalizedMSE:
     """Computes the normalized MSE loss for a given input tensors x and y.
     Args:
         object (_type_) : The object type.
@@ -228,7 +231,7 @@ class Trainer(object):
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
         torch.autograd.set_detect_anomaly(True)
-        
+
         for batch_idx, sample in enumerate(train_loader):
             data = sample["x"].to(self.device)
             target = sample["y"].to(self.device)
@@ -257,10 +260,7 @@ class Trainer(object):
                     idx,
                     device=self.do_animate,
                 )
-            # if "Duo" in self.params.TRAIN_PATH:
-            mask = data > 3*data.std() + data.mean()
-            target[~mask] = 0.01
-            output[~mask] = 0.01
+
             # compute the loss
             loss = self.loss(output, target)
             # add regularizer for MNO
@@ -277,7 +277,6 @@ class Trainer(object):
             self.optimizer.zero_grad(set_to_none=True)
             del output, target, data, loss
 
-
         return train_loss
 
     def recurrent_loop(self, train_loader, output_encoder=None, epoch: int = 1):
@@ -292,8 +291,8 @@ class Trainer(object):
             loss = 0
             data = sample["x"].to(self.device).squeeze(-1)
             target = sample["y"].to(self.device)
-            
-            for t in range(0, target.shape[-1], step): 
+
+            for t in range(0, target.shape[-1], step):
                 targ_t = target[..., t : t + step].squeeze(-1)
                 pred_t = self.model(data)
                 data = pred_t
@@ -459,10 +458,6 @@ class Trainer(object):
                             device=self.do_animate,
                         )
 
-                    if "Duo" in self.params.TRAIN_PATH:
-                        mask = data > 3*data.std() + data.mean()
-                        target[~mask] = 0.01
-                        output[~mask] = 0.01
                     # compute the loss
                     test_lp += self.test_loss_lp(output, target).item()
                     test_h1 += self.test_loss_h1(output, target).item()
