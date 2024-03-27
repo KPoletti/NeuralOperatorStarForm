@@ -139,7 +139,7 @@ def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
         data: torch.tensor data after reduction
     """
     # if "GravColl" in params.data_name and "FNO2d" in params.NN:
-    if "FNO2d_dens" in params.NN or "MNO" in params.NN:
+    if "FNO2dDens" in params.NN or "MNO" in params.NN:
         return data[..., 0, :]
     elif "RNN2d" in params.NN:
         return data[..., 0:1, :]
@@ -286,6 +286,8 @@ def dfTolist(frame: pd.DataFrame) -> list:
         info = {}
         # find the mass of the star
         snap = frame.iloc[i][keys[0][0]]["file"]
+        if ~hasattr(snap, "spilt"):
+            snap = "snap_1000"
         # split the file by mass
         info["mass"] = snap.split("_")[1]
         info["time"] = [frame.iloc[i][key[0]]["time"] for key in keys[::2]]
@@ -378,7 +380,7 @@ class MultiVariableNormalizer:
         return self
 
 
-def permuteFNO3d(data: torch.tensor) -> torch.tensor:
+def permuteFNO3d(data: torch.tensor, params) -> torch.Tensor:
     """Block permutes the data to the correct shape for the FNO3d network
 
     Args:
@@ -387,8 +389,11 @@ def permuteFNO3d(data: torch.tensor) -> torch.tensor:
     Returns:
         torch.tensor: permuted data
     """
-    data = data.permute(0, 3, 1, 2, 4)
-    return data
+    if "RNN3d" in params.NN:
+        return data.unsqueeze(1)
+    elif "Ints" in params.DATA_PATH:
+        return data.permute(0, 4, 1, 2, 3)
+    return data.permute(0, 3, 1, 2, 4)
 
 
 def permuteFNO2d(
@@ -406,7 +411,7 @@ def permuteFNO2d(
         torch.tensor: permuted data
     """
     # data = data.reshape(size, gridsize, gridsize, params.T_in)
-    data = data.squeeze()
+    # data = data.squeeze()
     print("WARNING FNO2D NO LONGER JUST DENSITY")
     data = data.permute(0, 3, 1, 2)
     return data
@@ -427,14 +432,14 @@ def permute(data, params, size, gridsize) -> torch.tensor:
         data: torch.tensor permuted data
     """
     if ("FNO3d" in params.NN) or ("RNN" in params.NN):
-        return permuteFNO3d(data)
-        # return permute_CNL2d(data)
+        return permuteFNO3d(data, params)
 
     elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
         return permuteFNO2d(data, params, size, gridsize)
 
     elif "CNL2d" in params.NN:
         return permuteCNL2d(data)
+
     else:
         raise ValueError(f"Unknown Neural Network: {params.NN}")
 
@@ -460,8 +465,11 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
     else:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
+
     input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
+    if "RNN3d" in params.NN:
+        output_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     return input_encoder, output_encoder
 
 
@@ -521,6 +529,10 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         print(f"Train Data Shape: {train_data_a.shape}")
         print(f"Test Data Shape: {tests_data_a.shape}")
         print(f"Valid Data Shape: {valid_data_a.shape}")
+        print("Outputs:")
+        print(f"Train Data Shape: {train_data_u.shape}")
+        print(f"Test Data Shape: {tests_data_u.shape}")
+        print(f"Valid Data Shape: {valid_data_u.shape}")
 
     if params.encoder:
         # initialize the encoder
