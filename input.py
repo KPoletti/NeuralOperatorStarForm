@@ -7,13 +7,13 @@ from neuralop import LpLoss, H1Loss  # type: ignore
 import math
 
 level = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-data_name = "Turb"  # NS-Caltech, StarForm, GravColl, GravInts or CATS
-loss_name = "LpLoss"  # LpLoss, H1Loss
+data_name = "GravColl"  # NS-Caltech, StarForm, GravColl, GravInts or CATS
+loss_name = "H1Loss"  # LpLoss, H1Loss
 
 log = False  # Option to take the log of the data
 doPlot = True  # Option to create plots
 use_mlp = True  # Option to use MLP
-encoder = True  # Option to use the encoder
+encoder = False  # Option to use the encoder
 use_ddp = False  # Option to use multi-gpu distributed data
 preactivation = True  # Option to use ResNet Preactivation
 saveNeuralNetwork = False  # Option to save the neural network
@@ -21,10 +21,10 @@ positional_encoding = False
 if positional_encoding:
     grid_boundaries = [[-1.25, 1.25], [-1.25, 1.25]]
 n_layers = 4
-mlp_dropout = 0.2
+mlp_dropout = 0.01
 # Pooling parameters
-poolKernel = 4  # set to 0 to disable pooling
-poolStride = 4  # set to 0 to disable pooling
+poolKernel = 0  # set to 0 to disable pooling
+poolStride = 0  # set to 0 to disable pooling
 #############################################
 # FOR NS Cal-tech Data
 #############################################
@@ -51,8 +51,8 @@ if data_name == "NS-Caltech":
 ##############################################
 elif data_name == "GravColl":
     S = 128
-    T = 5
-    T_in = 5
+    T = 9
+    T_in = 1
     DATA_PATH = "../dataToSend/TrainingData/LowRes/"
     dN = 10
     mass = "ALL"
@@ -65,12 +65,12 @@ elif data_name == "GravColl":
     if mass == "ALL":
         N = 902
     data_name = f"{data_name}{mass}_dN{dN}"
-    input_channels = 5
-    output_channels = 5
-    modes = 26  # star Form 20
-    width = 32  # star Form 100
-    poolKernel = 0  # set to 0 to disable pooling
-    poolStride = 0  # set to 0 to disable pooling
+    input_channels = 3
+    output_channels = 3
+    modes = 4  # star Form 20
+    width = 10  # star Form 100
+    poolKernel = 2  # set to 0 to disable pooling
+    poolStride = 2  # set to 0 to disable pooling
 
 elif data_name == "Turb":
     N = 4664
@@ -118,8 +118,8 @@ elif data_name == "GravInts":
     data_name = f"{data_name}{mass}_dN{dN}"
     input_channels = 5
     output_channels = 5
-    modes = 26  # star Form 20
-    width = 32  # star Form 100
+    modes = 8  # star Form 20
+    width = 20  # star Form 100
     poolKernel = 0  # set to 0 to disable pooling
     poolStride = 0  # set to 0 to disable pooling
 ##############################################
@@ -180,7 +180,10 @@ if poolKernel > 0:
 ##############################################
 # Neural network parameters
 ##############################################
-NN = "FNO2d"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+NN = "RNN"  # "FNO2d", "MNO", "FNO3d" or "CNL2d"
+factorization = None
+rank = 0.001
+norm = "group_norm"
 g = (1, 1)
 skip_type = "soft-gating"  # "identity", "linear" or "soft-gating"
 if NN == "MNO":
@@ -200,10 +203,11 @@ if NN == "MNO":
 ##############################################
 lr = 0.0001
 weight_decay = 2e-4
-epochs = 50
-batch_size = 50
+epochs = 5
+batch_size = 100
 optimizer = "Adam"
 scheduler_step = 10
+cosine_step = 5
 scheduler_gamma = 0.5
 if NN == "FNO3d" or NN == "CNL2d":
     d = 3
