@@ -7,6 +7,7 @@ from src.utilsMain import *
 import torch
 import numpy as np
 import src.networkUtils as myNet
+import src.trainBangle as myTrainBangle
 import src.train as myTrain
 from neuralop.utils import count_model_params
 import logging
@@ -19,10 +20,19 @@ import yaml
 def set_Loss(params):
     from neuralop import LpLoss, H1Loss
 
+    l2loss = LpLoss(d=1, p=2)
     if params.loss_name == "LpLoss":
         return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
         return H1Loss(d=params.d, reduce_dims=(0, 1))
+    elif params.loss_name == "weighted":
+
+        def weighted_loss(x, y, mask, alpha=params.alpha):
+            return (1 - alpha) * l2loss(x[mask], y[mask]) + alpha * l2loss(
+                x[~mask], y[~mask]
+            )
+
+        return weighted_loss
     else:
         raise ValueError(f"Loss {params.loss_name} not implemented")
 
@@ -43,7 +53,8 @@ def main(config=None):
             f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
             f"_E{params.encoder}_MLP{params.use_mlp}_N{N}"
         )
-
+        if params.factorization is None:
+            fact = "None"
         # check if path exists
         if not os.path.exists(f"results/{path}"):
             os.makedirs(f"results/{path}")
@@ -106,11 +117,14 @@ def main(config=None):
         ################################################################
         logger.info("........Training neural network........")
         # train neural network
-        Trainer = myTrain.Trainer(
-            model=model,
-            params=params,
-            device=device,
-        )
+        if "angle" in params.data_name:
+            Trainer = myTrainBangle.TrainerDuo(
+                model=model, params=params, device=device, save_every=20
+            )
+        else:
+            Trainer = myTrain.Trainer(
+                model=model, params=params, device=device, save_every=20
+            )
         Trainer.train(trainLoader, testLoader, output_encoder, sweep=True)
 
         ################################################################
