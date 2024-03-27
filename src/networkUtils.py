@@ -1,5 +1,5 @@
 """
-This module contains utility functions for defining and initializing neural networks 
+This module contains utility functions for defining and initializing neural networks
 used in the Neural Operator StarForm project.
 
 Functions:
@@ -14,7 +14,7 @@ Exceptions:
 """
 
 import logging
-from neuralop.models import FNO2d, FNO3d
+from neuralop.models import FNO2d, FNO3d  # , FNO
 
 import torch.nn.functional as F
 from cliffordlayers.models.basic.twod import (
@@ -44,7 +44,7 @@ def initializeNetwork(params) -> nn.Module:
     """
     model = nn.Module()
     # TODO: allow MLP to be input parameter
-    if params.NN == "FNO2d":
+    if params.NN == "FNO2d" or params.NN == "RNN":
         model = FNO2d(
             n_modes_height=params.modes,
             n_modes_width=params.modes,
@@ -56,20 +56,12 @@ def initializeNetwork(params) -> nn.Module:
             preactivation=params.preactivation,
             n_layers=params.n_layers,
             skip=params.skip_type,
-        )
-    elif params.NN == "RNN":
-        model = FNO2d(
-            n_modes_height=params.modes,
-            n_modes_width=params.modes,
-            hidden_channels=params.width,
-            in_channels=params.input_channels,
-            out_channels=params.output_channels,
-            use_mlp=params.use_mlp,
-            mlp_dropout=params.mlp_dropout,
-            preactivation=params.preactivation,
-            n_layers=params.n_layers,
-            skip=params.skip_type,
-            norm="group_norm",
+            fno_block_precision="mixed",
+            stablizer="tanh",
+            factorization=params.factorization,
+            rank=params.rank,
+            joint_factorization=True,
+            norm=params.norm,
         )
     elif params.NN == "FNO3d" or params.NN == "RNN3d":
         model = FNO3d(
