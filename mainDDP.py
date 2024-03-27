@@ -7,6 +7,7 @@ import time
 import numpy as np
 import src.networkUtils as myNet
 import src.train as myTrain
+import src.trainBangle as myTrainBangle
 import torch
 import torch.distributed as dist
 from src.utilsMain import prepareDataForTraining
@@ -126,13 +127,22 @@ def main(params):
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
-    Trainer = myTrain.Trainer(
-        model=DDP_model,
-        params=params,
-        device=device_id,
-        save_every=20,
-        ckp_path=f"results/{path}/models/{params.NN}_snapshot.pt",
-    )
+    if "Duo" in params.data_name: 
+        Trainer = myTrainBangle.TrainerDuo(
+            model=DDP_model,
+            params=params,
+            device=device_id,
+            save_every=20,
+            ckp_path=f"results/{path}/models/{params.NN}_snapshot.pt",
+        )
+    else:
+        Trainer = myTrain.Trainer(
+            model=DDP_model,
+            params=params,
+            device=device_id,
+            save_every=20,
+            ckp_path=f"results/{path}/models/{params.NN}_snapshot.pt",
+        )
     Trainer.train(trainLoader, testLoader, output_encoder)
     savename = ""
     ################################################################

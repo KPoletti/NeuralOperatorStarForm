@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 import os
 import time
@@ -7,10 +6,10 @@ import time
 import numpy as np
 import src.networkUtils as myNet
 import src.train as myTrain
+import src.trainBangle as myTrainBangle
 from src.utilsMain import prepareDataForTraining
 from src.parameterUtils import convertParamsToJSON
-from neuralop.utils import count_model_params
-
+from neuralop.utils import count_model_params  # pyright: ignore
 import torch
 import torch.nn as nn
 import wandb
@@ -51,10 +50,13 @@ def main(params):
     # grab the ending of the density file with .pt
     N = int((params.split[0] + params.split[1]) * params.N)
     # create output folder
+    fact = params.factorization
+    if params.factorization is None:
+        fact = "None"
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
         f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
-        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_Fact{[params.factorization]}"
+        f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_Fact{fact}"
     )
     params.path = path
     # check if path exists
@@ -118,7 +120,14 @@ def main(params):
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
-    Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=20)
+    if "angle" in params.data_name:
+        Trainer = myTrainBangle.TrainerDuo(
+            model=model, params=params, device=device, save_every=20
+        )
+    else:
+        Trainer = myTrain.Trainer(
+            model=model, params=params, device=device, save_every=20
+        )
     Trainer.train(trainLoader, testLoader, output_encoder)
 
     ################################################################
@@ -126,7 +135,7 @@ def main(params):
     ################################################################
     logging.info("........Testing neural network........")
     # test neural network
-    if params.NN == "RNN":
+    if "RNN" in params.NN:
         Trainer.evaluate_RNN(
             validLoader,
             output_encoder=output_encoder,
@@ -141,8 +150,8 @@ def main(params):
             savename="ValidationData",
         )
     print(f"Output folder for {path}")
-    os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")
-    run.finish()
+    os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")  # pyright: ignore
+    run.finish()  # pyright: ignore
 
 
 if __name__ == "__main__":
