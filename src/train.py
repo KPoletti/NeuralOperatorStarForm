@@ -1,40 +1,27 @@
-"""
-This module contains the Trainer class, which is used for training a neural network
-model.
-It also contains utility functions for checking the visibility of data and creating
-animations.
-"""
 
-import logging
+""" This module contains the Trainer class, which is used for training a neural network model. It also contains utility functions for checking the visibility of data and creating animations. """ 
+import logging 
 import os
 import re
-import time
-from dataclasses import dataclass
-
-import matplotlib.pyplot as plt
-import numpy as np
-import scipy
-import seaborn as sns
-from src.plottingUtils import createAnimation, Animation_true_pred_error
-
-import torch
-import wandb
-from torch import nn
-
-from neuralop import LpLoss, H1Loss
-from neuralop.datasets.transforms import PositionalEmbedding2D
-from neuralop.utils import count_model_params
-
-
-sns.set_color_codes(palette="deep")
-logger = logging.getLogger(__name__)
-logging.getLogger("wandb").setLevel(logging.WARNING)
-logging.getLogger("matplotlib").setLevel(logging.WARNING)
-
-
-class NormalizedMSE:
+import time 
+from dataclasses import dataclass 
+import matplotlib.pyplot as plt 
+import numpy as np 
+import scipy 
+import seaborn as sns 
+from src.plottingUtils import createAnimation, Animation_true_pred_error 
+import torch 
+import wandb 
+from torch import nn 
+from neuralop import LpLoss, H1Loss 
+from neuralop.datasets.transforms import PositionalEmbedding2D 
+from neuralop.utils import count_model_params 
+sns.set_color_codes(palette="deep") 
+logger = logging.getLogger(__name__) 
+logging.getLogger("wandb").setLevel(logging.WARNING) 
+logging.getLogger("matplotlib").setLevel(logging.WARNING) 
+class NormalizedMSE: 
     """Computes the normalized MSE loss for a given input tensors x and y.
-
     Args:
         object (_type_) : The object type.
     """
@@ -67,7 +54,15 @@ def dataVisibleCheck(
         save: directory to save the plots
     """
     # check if FNO3d is in save
-    if "FNO3d" in save or "CNL2d" in save or "RNN" in save:
+    if "RNN3d" in save:
+        target = target.squeeze()
+        output = output.squeeze()
+
+        target = target.permute(0, 4, 1, 2, 3)
+        output = output.permute(0, 4, 1, 2, 3)
+        target = target.sum(dim=-1)
+        output = output.sum(dim=-1)
+    elif "FNO3d" in save or "CNL2d" in save or "RNN" in save:
         # permute to get variable on the end
         target = target.permute(0, 4, 2, 3, 1)
         output = output.permute(0, 4, 2, 3, 1)
@@ -180,8 +175,6 @@ class Trainer(object):
         # define a test loss function that will be the same regardless of training
         self.test_loss_lp = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         self.test_loss_h1 = H1Loss(d=self.params.d, reduce_dims=(0, 1))
-        if self.params.NN == "RNN":
-            self.full_loss = H1Loss(d=self.params.d + 1, reduce_dims=(0, 1))
 
     def dissipativeRegularizer(
         self, data: torch.Tensor, device: torch.device
@@ -235,7 +228,7 @@ class Trainer(object):
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
         torch.autograd.set_detect_anomaly(True)
-        counter = 0
+        
         for batch_idx, sample in enumerate(train_loader):
             data = sample["x"].to(self.device)
             target = sample["y"].to(self.device)
@@ -264,8 +257,12 @@ class Trainer(object):
                     idx,
                     device=self.do_animate,
                 )
+            # if "Duo" in self.params.TRAIN_PATH:
+            mask = data > 3*data.std() + data.mean()
+            target[~mask] = 0.01
+            output[~mask] = 0.01
             # compute the loss
-            loss = self.loss(output.float(), target)
+            loss = self.loss(output, target)
             # add regularizer for MNO
             if "MNO" in self.params.NN:
                 diss_loss = self.dissipativeRegularizer(data, self.device)
@@ -278,30 +275,16 @@ class Trainer(object):
                 self.scheduler.step()
             train_loss += loss.item()
             self.optimizer.zero_grad(set_to_none=True)
-            del output, target, data
-            # if (
-            #     loss.item() - train_loss
-            # ) ** 2 >= 20 * train_loss**2 and batch_idx > 0:
-            #     savename = f"{self.plot_path}/Train_decoded_Jump_b{batch_idx}_ep{epoch}"
-            #     dataVisibleCheck(
-            #         target,
-            #         output,
-            #         sample["meta_y"],
-            #         f"{savename}target",
-            #         idx,
-            #         device=self.do_animate,
-            #     )
-            #     counter += 1
-            # if counter >= 0.5 * self.params.batch_size:
-            #     raise ValueError("Training loss is growing too much.")
+            del output, target, data, loss
 
-        return train_loss, loss
+
+        return train_loss
 
     def recurrent_loop(self, train_loader, output_encoder=None, epoch: int = 1):
         step = self.params.T_in
         # initialize loss
         train_loss = 0
-        full_loss = 0
+
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
         torch.autograd.set_detect_anomaly(True)
@@ -309,19 +292,22 @@ class Trainer(object):
             loss = 0
             data = sample["x"].to(self.device).squeeze(-1)
             target = sample["y"].to(self.device)
-            for t in range(0, target.shape[-1], step):
+            
+            for t in range(0, target.shape[-1], step): 
                 targ_t = target[..., t : t + step].squeeze(-1)
                 pred_t = self.model(data)
+                data = pred_t
 
+                if output_encoder is not None:
+                    pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
+                    targ_t = output_encoder.decode(targ_t.unsqueeze(-1)).squeeze(-1)
                 loss += self.loss(pred_t.float(), targ_t)
                 if t == 0:
                     pred = pred_t.unsqueeze(-1)
                 else:
                     pred = torch.cat((pred, pred_t.unsqueeze(-1)), dim=-1)
-                data = pred_t
                 del pred_t, targ_t
             train_loss += loss.item()
-            full_loss += self.full_loss(pred, target).item()
             # Backpropagate the loss
             self.optimizer.zero_grad(set_to_none=True)
 
@@ -348,7 +334,6 @@ class Trainer(object):
         # initialize loss
         test_h1 = 0
         test_l2 = 0
-        full_test = 0
         # select a random batch
         with torch.no_grad():
             for batch_idx, sample in enumerate(test_loader):
@@ -359,7 +344,9 @@ class Trainer(object):
                 for t in range(0, target.shape[-1], step):
                     targ_t = target[..., t : t + step].squeeze(-1)
                     pred_t = self.model(data)
-
+                    data = pred_t
+                    if output_encoder is not None:
+                        pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
                     h1_loss += self.test_loss_h1(pred_t.float(), targ_t)
                     l2_loss += self.test_loss_lp(pred_t.float(), targ_t)
 
@@ -367,14 +354,11 @@ class Trainer(object):
                         pred = pred_t.unsqueeze(-1)
                     else:
                         pred = torch.cat((pred, pred_t.unsqueeze(-1)), dim=-1)
-                    data = pred_t
 
                 test_h1 += h1_loss.item()
                 test_l2 += l2_loss.item()
 
-                full_test += self.full_loss(pred, target).item()
-
-        return test_h1, test_l2, full_test
+        return test_h1, test_l2
 
     def _save_snapshot(self, epoch):
         snapshot = {}
@@ -427,7 +411,7 @@ class Trainer(object):
             if "RNN" in self.params.NN:
                 train_loss, _ = self.recurrent_loop(train_loader, output_encoder, epoch)
             else:
-                train_loss, _ = self.batchLoop(train_loader, output_encoder, epoch)
+                train_loss = self.batchLoop(train_loader, output_encoder, epoch)
 
             if (
                 self.params.use_ddp
@@ -441,8 +425,8 @@ class Trainer(object):
             self.model.eval()
             test_lp = 0
             test_h1 = 0
-            if self.params.NN == "RNN":
-                test_h1, test_lp, full_test = self.recurrent_eval(
+            if "RNN" in self.params.NN:
+                test_h1, test_lp = self.recurrent_eval(
                     test_loader, output_encoder, epoch
                 )
 
@@ -474,12 +458,19 @@ class Trainer(object):
                             idx,
                             device=self.do_animate,
                         )
+
+                    if "Duo" in self.params.TRAIN_PATH:
+                        mask = data > 3*data.std() + data.mean()
+                        target[~mask] = 0.01
+                        output[~mask] = 0.01
+                    # compute the loss
                     test_lp += self.test_loss_lp(output, target).item()
                     test_h1 += self.test_loss_h1(output, target).item()
                     if "MNO" in self.params.NN:
                         diss_loss = self.dissipativeRegularizer(data, self.device)
                         test_lp += diss_loss.item()
                         test_h1 += diss_loss.item()
+                    del output, target, data
             test_lp /= test_data_length
             test_h1 /= test_data_length
 
@@ -780,7 +771,6 @@ class Trainer(object):
 
         test_pred = 0
         test_roll = 0
-        full_test = 0
         roll_t = 0
         step = self.params.T_in
 
@@ -814,18 +804,23 @@ class Trainer(object):
                     pred_t = self.model(data)
                     # apply the model to previous output
                     roll_t = self.model(roll_t)
-
+                    data = pred_t
+                    if output_encoder is not None:
+                        pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
+                        roll_decode = output_encoder.decode(
+                            roll_t.unsqueeze(-1)
+                        ).squeeze(-1)
                     if t == 0:
                         pred_full = pred_t.unsqueeze(-1)
-                        roll_full = roll_t.unsqueeze(-1)
+                        roll_full = roll_decode.unsqueeze(-1)
                     else:
                         pred_full = torch.cat((pred_full, pred_t.unsqueeze(-1)), dim=-1)
-                        roll_full = torch.cat((roll_full, roll_t.unsqueeze(-1)), dim=-1)
+                        roll_full = torch.cat(
+                            (roll_full, roll_decode.unsqueeze(-1)), dim=-1
+                        )
 
                     loss_pred += self.test_loss_lp(pred_t.float(), targ_t)
-                    loss_roll += self.test_loss_lp(roll_t.float(), targ_t)
-
-                    data = pred_t
+                    loss_roll += self.test_loss_lp(roll_decode.float(), targ_t)
 
                 if roll_steps == 5:
                     roll_steps = 0
@@ -833,12 +828,11 @@ class Trainer(object):
                     roll_steps += 1
                 test_pred += loss_pred.item()
                 test_roll += loss_roll.item()
-                full_test += self.full_loss(pred_full, target).item()
                 # assign the values to the tensors
+                if input_encoder is not None:
+                    data_0 = input_encoder.decode(sample["x"].to(self.device))
                 pred[batchidx] = pred_full
-                in_data[batchidx] = torch.cat(
-                    (sample["x"].to(self.device), pred_full[..., :-1]), dim=-1
-                )
+                in_data[batchidx] = torch.cat((data_0, pred_full[..., :-1]), dim=-1)
                 truth[batchidx] = target
                 roll[batchidx] = roll_full
 
@@ -966,25 +960,27 @@ class Trainer(object):
                     output = output_encoder.decode(output)
                     # decode the multiple applications of the model
                     roll_out = output_encoder.decode(roll_batch)
-                if batchidx == rand_point:
-                    save_plot = f"{self.plot_path}/Valid_"
-                    idx = 0
-                    dataVisibleCheck(
-                        target,
-                        output,
-                        sample["meta_y"],
-                        f"{save_plot}output",
-                        idx,
-                        device=self.do_animate,
-                    )
-                    dataVisibleCheck(
-                        target,
-                        roll_out,
-                        sample["meta_y"],
-                        f"{save_plot}rolling",
-                        idx,
-                        device=self.do_animate,
-                    )
+                else:
+                    roll_out = roll_batch.clone()
+                # if batchidx == rand_point:
+                #     save_plot = f"{self.plot_path}/Valid_"
+                #     idx = 0
+                #     dataVisibleCheck(
+                #         target,
+                #         output,
+                #         sample["meta_y"],
+                #         f"{save_plot}output",
+                #         idx,
+                #         device=self.do_animate,
+                #     )
+                #     dataVisibleCheck(
+                #         target,
+                #         roll_out,
+                #         sample["meta_y"],
+                #         f"{save_plot}rolling",
+                #         idx,
+                #         device=self.do_animate,
+                #     )
 
                 if roll_steps == 5:
                     roll_steps = 0
