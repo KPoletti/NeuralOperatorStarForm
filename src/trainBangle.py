@@ -5,25 +5,22 @@ It also contains utility functions for checking the visibility of data and creat
 animations.
 """
 
+from dataclasses import dataclass
 import logging
 import os
-import re
 import time
-from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import seaborn as sns
-from src.plottingUtils import createAnimation, Animation_true_pred_error
-
 import torch
-import wandb
 from torch import device, nn
-import torch.distributed as dist 
-from neuralop import LpLoss, H1Loss
-from neuralop.datasets.transforms import PositionalEmbedding2D
-from neuralop.utils import count_model_params
+import torch.distributed as dist
+import wandb
+
+from neuralop import H1Loss, LpLoss #type: ignore 
+from src.plottingUtils import Animation_true_pred_error
 
 
 sns.set_color_codes(palette="deep")
@@ -58,7 +55,6 @@ def dataVisibleCheck(
     output: torch.Tensor,
     meta: dict,
     save: str,
-    idx,
     device,
 ):
     """
@@ -124,7 +120,7 @@ class TrainerDuo(object):
     def __init__(
         self,
         model: nn.Module,
-        params: dataclass,
+        params: dataclass, #type: ignore
         device: torch.device,
         ckp_path: str = "",
         save_every: int = 1,
@@ -249,7 +245,7 @@ class TrainerDuo(object):
                 self.scheduler.step()
             train_loss += loss.item()
             del output, target, data, loss
-        torch.autograd.set_detect_anomaly(mode=False)
+        torch.autograd.set_detect_anomaly(mode=False) #type: ignore
         return train_loss
 
     def _save_snapshot(self, epoch):
@@ -267,10 +263,9 @@ class TrainerDuo(object):
 
     def train(
         self,
-        train_loader: torch.utils.data.DataLoader,
-        test_loader: torch.utils.data.DataLoader,
+        train_loader: torch.utils.data.DataLoader, #type: ignore
+        test_loader: torch.utils.data.DataLoader, # type: ignore
         output_encoder=None,
-        sweep: bool = False,
     ) -> None:
         """
         Train the model
@@ -368,14 +363,14 @@ class TrainerDuo(object):
                 }
             )
 
-            if (epoch >= 25) and np.abs(old_test - test_losses["weight"] ) <=1e-6:
+            if (epoch >= 0.25*self.params.epochs) and np.abs(old_test - test_losses["l2loss"] ) <=1e-6:
                 print("EARLY STOPPING CRITERIA MET ON EPOCH", epoch, "on device", device)
                 early_stop += 1
             if self.params.use_ddp:
                 dist.all_reduce(early_stop, op=dist.ReduceOp.SUM)
             if early_stop != 0:
                 break
-            old_test = test_losses["weight"]
+            old_test = test_losses["l2loss"]
 
         if self.params.saveNeuralNetwork:
             modelname = f"results/{self.params.path}/models/{self.params.NN}.pt"
@@ -390,7 +385,6 @@ class TrainerDuo(object):
         in_data,
         truth,
         savename="",
-        do_animate=True,
     ):
         """
         Plot the prediction
@@ -447,7 +441,7 @@ class TrainerDuo(object):
         ax.set_xlabel(r"$\Phi_{FNO} - \Phi_{True}$ (degrees)")
         # annotate the plot with the mean and standard deviation
         ax.annotate(
-            f"Mean ($\Phi_p - \Phi_T$): {torch.mean(pred_flat- truth_flat).item():0.3f}",
+            f"Mean ($\Phi_p - \Phi_T$): {torch.mean(pred_flat- truth_flat).item():0.3f}", #type: ignore
             xy=(0.05, 0.95),
             xycoords="axes fraction",
             fontsize=12,
@@ -455,14 +449,14 @@ class TrainerDuo(object):
             va="top",
         )
         ax.annotate(
-            f"STD ($\Phi_p - \Phi_T$): {torch.std(pred_flat- truth_flat).item():0.3f}",
+            f"STD ($\Phi_p - \Phi_T$): {torch.std(pred_flat- truth_flat).item():0.3f}", #type: ignore
             xy=(0.05, 0.85),
             xycoords="axes fraction",
             fontsize=12,
             ha="left",
             va="top",
         )
-        hist = ax.hist((pred_flat - truth_flat), bins=100, alpha=0.5, density=True)
+        _ = ax.hist((pred_flat - truth_flat), bins=100, alpha=0.5, density=True)
         image_hist = wandb.Image(fig)
         plt.savefig(f"{self.plot_path}/{savename}_hist.png")
         wandb.log({"Scatter": image_sc, "Hist": image_hist})
@@ -479,11 +473,10 @@ class TrainerDuo(object):
 
     def evaluate(
         self,
-        data_loader: torch.utils.data.DataLoader,
+        data_loader: torch.utils.data.DataLoader, #type: ignore
         input_encoder=None,
         output_encoder=None,
         savename: str = "",
-        do_animate=True,
     ) -> None:
         """
         Evaluates the model on the given data_loader and saves the results to a .mat
@@ -599,5 +592,4 @@ class TrainerDuo(object):
                 in_data=in_data,
                 truth=truth,
                 savename=f"{savename}_results",
-                do_animate=do_animate,
             )
