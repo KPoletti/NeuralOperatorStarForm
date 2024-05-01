@@ -501,6 +501,7 @@ class Trainer(object):
                 }
             )
 
+        # fine_tune(self.model, self.params, self.device, self.optimizer, self.scheduler)
         if self.params.saveNeuralNetwork:
             modelname = f"results/{self.params.path}/models/{self.params.NN}.pt"
             if self.params.use_ddp:
@@ -650,7 +651,7 @@ class Trainer(object):
             in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
 
         # and (n,x,y,t) flatten to (t*n, x, y)
-        if "FNO2d" in self.params.NN or num_dims < 5:
+        if "FNO2dALL" in self.params.NN:  # or num_dims < 5:
             prediction = prediction[:, 0, ...]
             truth = truth[:, 0, ...]
             roll = roll[:, 0, ...]
@@ -679,15 +680,16 @@ class Trainer(object):
                 mass="",
                 fps=10,
             )
-        self.rmse_plot(
-            ind,
-            num_dims,
-            time_data,
-            truth,
-            roll,
-            in_data,
-            f"{savename}_rolling",
-        )
+        if self.params.input_channels == self.params.output_channels:
+            self.rmse_plot(
+                ind,
+                num_dims,
+                time_data,
+                truth,
+                roll,
+                in_data,
+                f"{savename}_rolling",
+            )
         self.rmse_plot(
             ind,
             num_dims,
@@ -898,6 +900,7 @@ class Trainer(object):
             None
         """
         # TODO: TEST THIS FUNCTION
+        rolling_condition = self.params.input_channels == self.params.output_channels
         self.model.eval()
         # create a tensor to store the prediction
         num_samples = len(data_loader.dataset)
@@ -934,55 +937,25 @@ class Trainer(object):
                 cur_mass = meta_data["mass"][0]
                 time_data[batchidx] = torch.tensor(sample["meta_y"]["time"])
                 output = self.model(data)
+                if rolling_condition:
+                    roll_steps *= cur_mass == mass
+                    roll_batch, roll_out, re_loss_i, roll_steps = self.rolling_update(
+                        output, roll_batch, roll_steps, re_loss, output_encoder, target
+                    )
+                    re_loss += re_loss_i
                 # apply the model to previous output
                 if cur_mass != mass:
-                    roll_batch = output.clone()
                     logging.info(f"Updating mass from M{mass} to M{cur_mass}")
                     print(f"Updating mass from M{mass} to M{cur_mass}")
                     mass = cur_mass
-                    roll_steps = 1
-                elif roll_steps == 0:
-                    roll_batch = output.clone()
-                    roll_steps = 1
-                else:
-                    # apply the model to previous output
-                    roll_steps += 1
-                    roll_batch = self.model(roll_batch)
 
                 # decode  if there is an output encoder
                 if output_encoder is not None:
                     # decode the output
                     output = output_encoder.decode(output)
-                    # decode the multiple applications of the model
-                    roll_out = output_encoder.decode(roll_batch)
-                else:
-                    roll_out = roll_batch.clone()
-                # if batchidx == rand_point:
-                #     save_plot = f"{self.plot_path}/Valid_"
-                #     idx = 0
-                #     dataVisibleCheck(
-                #         target,
-                #         output,
-                #         sample["meta_y"],
-                #         f"{save_plot}output",
-                #         idx,
-                #         device=self.do_animate,
-                #     )
-                #     dataVisibleCheck(
-                #         target,
-                #         roll_out,
-                #         sample["meta_y"],
-                #         f"{save_plot}rolling",
-                #         idx,
-                #         device=self.do_animate,
-                #     )
 
-                if roll_steps == 5:
-                    roll_steps = 0
-                else:
-                    roll_steps += 1
                 # compute the loss
-                re_loss += self.test_loss_lp(roll_out, target).item()
+                # re_loss += self.test_loss_lp(roll_out, target).item()
                 test_loss += self.test_loss_lp(output, target).item()
                 if transform is not None:
                     data = data[:, 0:5, ...]
@@ -993,10 +966,9 @@ class Trainer(object):
                 pred[batchidx] = output.squeeze()
                 in_data[batchidx] = data.squeeze()
                 truth[batchidx] = target.squeeze()
-                roll[batchidx] = roll_out.squeeze()
+                if rolling_condition:
+                    roll[batchidx] = roll_out.squeeze()
 
-                # if input_encoder is not None:
-                #     roll_batch = input_encoder.encode(roll_out)
                 if transform is not None:
                     roll_batch = transform(roll_batch[0, ...].cpu()).to(self.device)
                     roll_batch = roll_batch.unsqueeze(0)
@@ -1044,3 +1016,22 @@ class Trainer(object):
                 savename=f"{savename}_results",
                 do_animate=do_animate,
             )
+
+    def rolling_update(self, output, roll, roll_steps, re_loss, output_encoder, target):
+        if roll_steps == 0:
+            roll = output.clone()
+            roll_steps += 1
+        else:
+            roll_steps += 1
+            roll = self.model(roll)
+            # decode  if there is an output encoder
+        if output_encoder is not None:
+            # decode the multiple applications of the model
+            roll_out = output_encoder.decode(roll)
+        else:
+            roll_out = roll.clone()
+        re_loss = self.test_loss_lp(roll_out, target).item()
+        # reset after 5 steps
+        if roll_steps == 5:
+            roll_steps = 0
+        return roll, roll_out, re_loss, roll_steps
