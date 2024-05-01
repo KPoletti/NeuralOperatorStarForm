@@ -68,8 +68,17 @@ def set_Loss(params) -> LpLoss | H1Loss:
             )
 
         return weighted_loss
+    elif params.loss_name == "weighted":
+
+        def weighted_loss(x, y, mask, alpha=params.alpha):
+            return (1 - alpha) * l2loss(x[mask], y[mask]) + alpha * l2loss(
+                x[~mask], y[~mask]
+            )
+
+        return weighted_loss
     else:
         raise ValueError(f"Loss {params.loss_name} not implemented")
+
 
 
 def loadConfig(path):

@@ -5,33 +5,28 @@ It also contains utility functions for checking the visibility of data and creat
 animations.
 """
 
+from dataclasses import dataclass
 import logging
 import os
-import re
 import time
-from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import seaborn as sns
-from src.plottingUtils import createAnimation, Animation_true_pred_error
-
 import torch
+from torch import device, nn
+import torch.distributed as dist
 import wandb
-from torch import nn
 
-from neuralop import LpLoss, H1Loss
-from neuralop.datasets.transforms import PositionalEmbedding2D
-from neuralop.utils import count_model_params
+from neuralop import H1Loss, LpLoss #type: ignore 
+from src.plottingUtils import Animation_true_pred_error
 
 
 sns.set_color_codes(palette="deep")
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
-
-
 class NormalizedMSE:
     """Computes the normalized MSE loss for a given input tensors x and y.
 
@@ -60,7 +55,6 @@ def dataVisibleCheck(
     output: torch.Tensor,
     meta: dict,
     save: str,
-    idx,
     device,
 ):
     """
@@ -126,7 +120,7 @@ class TrainerDuo(object):
     def __init__(
         self,
         model: nn.Module,
-        params: dataclass,
+        params: dataclass, #type: ignore
         device: torch.device,
         ckp_path: str = "",
         save_every: int = 1,
@@ -151,7 +145,6 @@ class TrainerDuo(object):
         if self.device == 0:
             lr = self.optimizer.state_dict()["param_groups"][0]["lr"]
             print(f"Adam LR {lr}")
-        self.loss = params.loss_fn
         self.plot_path = f"results/{self.params.path}/plots"
         self.save_every = save_every
         self.epochs_run = 0
@@ -159,8 +152,9 @@ class TrainerDuo(object):
         self.do_animate = (self.device != 0) * self.params.use_ddp
         print(self.do_animate)
         # initialize the loss function
-        ntrain = int((self.params.split[0] * self.params.N))
         self.loss = self.params.loss_fn
+        # calculate Learn-Rate warm up scheduler iterations
+        ntrain = int((self.params.split[0] * self.params.N))
         warmup_ep = self.params.epochs * 5 // 100
 
         iterations = (
@@ -192,7 +186,12 @@ class TrainerDuo(object):
         # define a test loss function that will be the same regardless of training
         l2loss = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         h1loss = H1Loss(d=self.params.d, reduce_dims=(0, 1))
-        self.test_losses = {"l2loss": l2loss, "h1loss": h1loss, "weight": self.loss}
+        l2loss1d = LpLoss(d=1,p=2)
+        def weighted_loss(x, y, mask, alpha=self.params.alpha):
+            return (1 - alpha) * l2loss1d(x[mask], y[mask]) + alpha * l2loss1d(x[~mask], y[~mask])
+
+ 
+        self.test_losses = {"l2loss": l2loss, "h1loss": h1loss, "weight": weighted_loss}
 
     def batchLoop(self, train_loader, output_encoder=None, epoch: int = 1):
         """
@@ -210,8 +209,6 @@ class TrainerDuo(object):
         loss = 0
         train_loss = 0
         # select a random batch
-        rand_point = np.random.randint(0, len(train_loader))
-        counter = 0
         for batch_idx, sample in enumerate(train_loader):
             self.optimizer.zero_grad(set_to_none=True)
 
@@ -231,10 +228,16 @@ class TrainerDuo(object):
                 target = output_encoder.decode(target)
                 # decode the output
                 output = output_encoder.decode(output)
-            mask = data > 3 * data.std() + data.mean()
+            mask = torch.stack([data[...,i] >= 3 * data[...,i].std() for i in range(data.shape[-1])],dim=-1)
             # compute the loss
-            loss = self.loss(output, target, mask)
-
+            if self.params.loss_name == "weighted":
+                loss = self.loss(output, target, mask)  
+            else:
+                # loss = self.loss(output, target)
+                weights = torch.ones_like(output)
+                weights[~mask] = self.params.alpha**(1/2)  
+                loss = self.loss(weights*output, weights*target)
+ 
             # Backpropagate the loss
             loss.backward()
             self.optimizer.step()
@@ -242,7 +245,7 @@ class TrainerDuo(object):
                 self.scheduler.step()
             train_loss += loss.item()
             del output, target, data, loss
-        torch.autograd.set_detect_anomaly(mode=False)
+        torch.autograd.set_detect_anomaly(mode=False) #type: ignore
         return train_loss
 
     def _save_snapshot(self, epoch):
@@ -260,10 +263,9 @@ class TrainerDuo(object):
 
     def train(
         self,
-        train_loader: torch.utils.data.DataLoader,
-        test_loader: torch.utils.data.DataLoader,
+        train_loader: torch.utils.data.DataLoader, #type: ignore
+        test_loader: torch.utils.data.DataLoader, # type: ignore
         output_encoder=None,
-        sweep: bool = False,
     ) -> None:
         """
         Train the model
@@ -285,7 +287,8 @@ class TrainerDuo(object):
 
         logger.debug(f"len(test_loader.dataset) = {test_data_length}")
         logger.debug(f"len(train_loader.dataset) = {train_data_length}")
-        loss_old = 500
+        old_test = 0
+        early_stop = torch.zeros(1).to(self.device)
 
         # start training
         for epoch in range(self.epochs_run, self.params.epochs):
@@ -313,9 +316,9 @@ class TrainerDuo(object):
                 # decode  if there is an output encoder
                 if output_encoder is not None:
                     output = output_encoder.decode(output)
-                    # do not decode the test target because test data isn't encode
-
-                mask = data > 3 * data.std() + data.mean()
+                    # do not decode the test target because test data isn't encoder
+                mask = torch.stack([data[...,i] >= 3 * data[...,i].std() for i in range(data.shape[-1])],dim=-1)
+               # mask = data > 3 * data.std() + data.mean()
                 for key, loss_type in self.test_losses.items():
                     if key == "weight":
                         test_losses[key] += loss_type(output, target, mask).item()
@@ -360,6 +363,15 @@ class TrainerDuo(object):
                 }
             )
 
+            if (epoch >= 0.25*self.params.epochs) and np.abs(old_test - test_losses["l2loss"] ) <=1e-6:
+                print("EARLY STOPPING CRITERIA MET ON EPOCH", epoch, "on device", device)
+                early_stop += 1
+            if self.params.use_ddp:
+                dist.all_reduce(early_stop, op=dist.ReduceOp.SUM)
+            if early_stop != 0:
+                break
+            old_test = test_losses["l2loss"]
+
         if self.params.saveNeuralNetwork:
             modelname = f"results/{self.params.path}/models/{self.params.NN}.pt"
             if self.params.use_ddp:
@@ -373,7 +385,6 @@ class TrainerDuo(object):
         in_data,
         truth,
         savename="",
-        do_animate=True,
     ):
         """
         Plot the prediction
@@ -391,7 +402,7 @@ class TrainerDuo(object):
         logging.getLogger("matplotlib").setLevel(logging.WARNING)
         mask = torch.stack(
             [
-                in_data[i] > 3 * in_data[i].std() + in_data[i].mean()
+                in_data[i] > 3 * in_data[i].std()
                 for i in range(in_data.shape[0])
             ]
         )
@@ -417,6 +428,7 @@ class TrainerDuo(object):
         ax.plot([-angle, angle], [-angle, angle], "r--")
         ax.set_xlabel("True Angle (radians)")
         ax.set_ylabel("FNO Predicted Angle (radians)")
+        ax.set_ylim(truth_flat.min(),truth_flat.max())
         image_sc = wandb.Image(fig_sc)
         plt.savefig(f"{self.plot_path}/{savename}_scatter.png")
         plt.close()
@@ -429,7 +441,7 @@ class TrainerDuo(object):
         ax.set_xlabel(r"$\Phi_{FNO} - \Phi_{True}$ (degrees)")
         # annotate the plot with the mean and standard deviation
         ax.annotate(
-            f"Mean ($\Phi_p - \Phi_T$): {torch.mean(pred_flat- truth_flat).item():0.3f}",
+            f"Mean ($\Phi_p - \Phi_T$): {torch.mean(pred_flat- truth_flat).item():0.3f}", #type: ignore
             xy=(0.05, 0.95),
             xycoords="axes fraction",
             fontsize=12,
@@ -437,14 +449,14 @@ class TrainerDuo(object):
             va="top",
         )
         ax.annotate(
-            f"STD ($\Phi_p - \Phi_T$): {torch.std(pred_flat- truth_flat).item():0.3f}",
+            f"STD ($\Phi_p - \Phi_T$): {torch.std(pred_flat- truth_flat).item():0.3f}", #type: ignore
             xy=(0.05, 0.85),
             xycoords="axes fraction",
             fontsize=12,
             ha="left",
             va="top",
         )
-        hist = ax.hist((pred_flat - truth_flat), bins=100, alpha=0.5, density=True)
+        _ = ax.hist((pred_flat - truth_flat), bins=100, alpha=0.5, density=True)
         image_hist = wandb.Image(fig)
         plt.savefig(f"{self.plot_path}/{savename}_hist.png")
         wandb.log({"Scatter": image_sc, "Hist": image_hist})
@@ -461,11 +473,10 @@ class TrainerDuo(object):
 
     def evaluate(
         self,
-        data_loader: torch.utils.data.DataLoader,
+        data_loader: torch.utils.data.DataLoader, #type: ignore
         input_encoder=None,
         output_encoder=None,
         savename: str = "",
-        do_animate=True,
     ) -> None:
         """
         Evaluates the model on the given data_loader and saves the results to a .mat
@@ -514,7 +525,8 @@ class TrainerDuo(object):
                     output = output_encoder.decode(output)
 
                 # compute the loss
-                mask = data > 3 * data.std() + data.mean()
+                # mask = data > 3 * data.std() + data.mean()
+                mask = torch.stack([data[...,i] >= 3 * data[...,i].std() for i in range(data.shape[-1])],dim=-1)
                 for key, loss_type in self.test_losses.items():
                     if key == "weight":
                         test_losses[key] += loss_type(output, target, mask).item()
@@ -540,7 +552,7 @@ class TrainerDuo(object):
             print(f"Length of Valid Data: {len(data_loader.dataset)}")
             # print the final loss
             num_trained = self.params.N * self.params.split[0]
-            print(f"Final Loss for {int(num_trained)}: {test_loss} ")
+            print(f"Final Loss for {int(num_trained)}: {test_losses['weight']} ")
             wandb.log(
                 {
                     "Valid L2 Loss": test_losses["l2loss"],
@@ -580,5 +592,4 @@ class TrainerDuo(object):
                 in_data=in_data,
                 truth=truth,
                 savename=f"{savename}_results",
-                do_animate=do_animate,
             )
