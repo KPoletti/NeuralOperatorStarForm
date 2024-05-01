@@ -139,7 +139,7 @@ def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
         data: torch.tensor data after reduction
     """
     # if "GravColl" in params.data_name and "FNO2d" in params.NN:
-    if "FNO2dDens" in params.NN or "MNO" in params.NN:
+    if "FNO2dDens" in params.NN or "MNO" in params.NN or "UNet" in params.NN:
         return data[..., 0, :]
     elif "RNN2d" in params.NN:
         return data[..., 0:1, :]
@@ -248,7 +248,7 @@ def timestepSplit(
         dataInfo_u: pd.DataFrame information about the time step to predict
     """
     dataset_a = dataset[..., : params.T_in]
-    dataset_u = dataset[..., params.T_in : params.T_in + params.T]
+    dataset_u = dataset[..., params.T_out : params.T_out + params.T]
     # split the data frame betwen the time step to predict and the time step to use
     try:
         data_info_a = data_info["t"]
@@ -262,7 +262,7 @@ def timestepSplit(
 
         # find the keys that correspond to the time step to use t+{dN-1}
         keys_a = [key for key in keys if int(key.split("+")[1]) <= params.T_in - 1]
-        keys_u = [key for key in keys if int(key.split("+")[1]) > params.T_in - 1]
+        keys_u = [key for key in keys if int(key.split("+")[1]) > params.T_out]
         # split the dataframe
         data_info_a = data_info[keys_a]
         data_info_u = data_info[keys_u]
@@ -434,7 +434,7 @@ def permute(data, params, size, gridsize) -> torch.tensor:
     if ("FNO3d" in params.NN) or ("RNN" in params.NN):
         return permuteFNO3d(data, params)
 
-    elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
+    elif ("FNO2d" in params.NN) or ("MNO" in params.NN) or ("UNet" in params.NN):
         return permuteFNO2d(data, params, size, gridsize)
 
     elif "CNL2d" in params.NN:
@@ -456,7 +456,12 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder: initialized input encoder
         output_encoder: initialized output encoder
     """
-    if "FNO2d" in params.NN or "MNO" in params.NN or "Ints" in params.DATA_PATH:
+    if (
+        "FNO2d" in params.NN
+        or "MNO" in params.NN
+        or "UNet" in params.NN
+        or "Ints" in params.DATA_PATH
+    ):
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
     elif "GravColl" in params.data_name or "Turb" in params.data_name:

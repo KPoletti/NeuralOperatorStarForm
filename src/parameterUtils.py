@@ -1,6 +1,7 @@
 """ 
 Help functions for converting between 
 """
+
 import yaml
 from pathlib import Path
 import json
@@ -54,10 +55,19 @@ def convertParamsToJSON(params):
 
 
 def set_Loss(params) -> LpLoss | H1Loss:
+    l2loss = LpLoss(d=1, p=2)
     if params.loss_name == "LpLoss":
         return LpLoss(d=params.d, p=2, reduce_dims=(0, 1))
     elif params.loss_name == "H1Loss":
         return H1Loss(d=params.d, reduce_dims=(0, 1))
+    elif params.loss_name == "weighted":
+
+        def weighted_loss(x, y, mask, alpha=params.alpha):
+            return (1 - alpha) * l2loss(x[mask], y[mask]) + alpha * l2loss(
+                x[~mask], y[~mask]
+            )
+
+        return weighted_loss
     else:
         raise ValueError(f"Loss {params.loss_name} not implemented")
 
