@@ -13,6 +13,7 @@ from src.plottingUtils import createAnimation, Animation_true_pred_error
 import torch
 import wandb
 from torch import nn
+import torch.distributed as dist
 from neuralop import LpLoss, H1Loss
 from neuralop.datasets.transforms import PositionalEmbedding2D
 from neuralop.utils import count_model_params
@@ -65,7 +66,7 @@ def dataVisibleCheck(
         output = output.permute(0, 4, 1, 2, 3)
         target = target.sum(dim=-1)
         output = output.sum(dim=-1)
-    elif "FNO3d" in save or "CNL2d" in save or "RNN" in save:
+    elif "FNO3d" in save or "CNL2d" in save or "RNN" in save or "UNO" in save:
         # permute to get variable on the end
         target = target.permute(0, 4, 2, 3, 1)
         output = output.permute(0, 4, 2, 3, 1)
@@ -202,11 +203,11 @@ class Trainer(object):
         ).to(self.device)
         assert x_diss.shape == data.shape
         y_diss = self.params.target_fn(x_diss, self.params.scale_down).to(self.device)
-        out_diss = self.model(x_diss).reshape(-1, self.params.out_dim)
+        out_diss = self.model(x_diss)
         diss_loss = (
             (1 / (self.params.S**2))
             * self.params.loss_weight
-            * self.params.dissloss(out_diss, y_diss.reshape(-1, self.params.out_dim))
+            * self.params.dissloss(out_diss, y_diss)
         )  # weighted by 1 / (S**2)
         return diss_loss
 
@@ -264,7 +265,7 @@ class Trainer(object):
             # compute the loss
             loss = self.loss(output, target)
             # add regularizer for MNO
-            if "MNO" in self.params.NN:
+            if self.params.diss_reg:
                 diss_loss = self.dissipativeRegularizer(data, self.device)
                 diss_loss_l2 += diss_loss.item()
                 loss += diss_loss
@@ -290,10 +291,10 @@ class Trainer(object):
         for batch_idx, sample in enumerate(train_loader):
             loss = 0
             data = sample["x"].to(self.device).squeeze(-1)
-            target = sample["y"].to(self.device)
+            target = sample["y"]
 
             for t in range(0, target.shape[-1], step):
-                targ_t = target[..., t : t + step].squeeze(-1)
+                targ_t = target[..., t : t + step].squeeze(-1).to(self.device)
                 pred_t = self.model(data)
                 data = pred_t
 
@@ -302,9 +303,9 @@ class Trainer(object):
                     targ_t = output_encoder.decode(targ_t.unsqueeze(-1)).squeeze(-1)
                 loss += self.loss(pred_t.float(), targ_t)
                 if t == 0:
-                    pred = pred_t.unsqueeze(-1)
+                    pred = pred_t.unsqueeze(-1).to("cpu")
                 else:
-                    pred = torch.cat((pred, pred_t.unsqueeze(-1)), dim=-1)
+                    pred = torch.cat((pred, pred_t.unsqueeze(-1).to("cpu")), dim=-1)
                 del pred_t, targ_t
             train_loss += loss.item()
             # Backpropagate the loss
@@ -400,6 +401,10 @@ class Trainer(object):
         logger.debug(f"len(test_loader.dataset) = {test_data_length}")
         logger.debug(f"len(train_loader.dataset) = {train_data_length}")
         loss_old = 500
+        old_test = 500
+        early_stop = 0
+        idx = 0
+        avg_diff = np.zeros(5)
 
         # start training
         for epoch in range(self.epochs_run, self.params.epochs):
@@ -461,7 +466,7 @@ class Trainer(object):
                     # compute the loss
                     test_lp += self.test_loss_lp(output, target).item()
                     test_h1 += self.test_loss_h1(output, target).item()
-                    if "MNO" in self.params.NN:
+                    if self.params.diss_reg:
                         diss_loss = self.dissipativeRegularizer(data, self.device)
                         test_lp += diss_loss.item()
                         test_h1 += diss_loss.item()
@@ -500,6 +505,32 @@ class Trainer(object):
                     "Learn-Rate": lr,
                 }
             )
+            # early stopping
+            avg_diff[idx] = test_lp - old_test
+            idx = (idx + 1) % 5
+            if (epoch >= 0.5 * self.params.epochs) and np.abs(
+                old_test - test_lp
+            ) <= 1e-6:
+                print(
+                    "EARLY STOPPING CRITERIA MET ON EPOCH",
+                    epoch,
+                    "on device",
+                    self.device,
+                )
+                early_stop += 1
+            elif (epoch >= 0.5 * self.params.epochs) and avg_diff.mean() > 1e-3:
+                print(
+                    "EARLY STOPPING OVERFITTING CRITERIA MET ON EPOCH",
+                    epoch,
+                    "on device",
+                    self.device,
+                )
+                early_stop += 1
+            if self.params.use_ddp:
+                dist.all_reduce(early_stop, op=dist.ReduceOp.SUM)
+            if early_stop != 0:
+                break
+            old_test = test_lp
 
         # fine_tune(self.model, self.params, self.device, self.optimizer, self.scheduler)
         if self.params.saveNeuralNetwork:
@@ -1017,7 +1048,9 @@ class Trainer(object):
                 do_animate=do_animate,
             )
 
-    def rolling_update(self, output, roll, roll_steps, re_loss, output_encoder, target):
+    def rolling_update(
+        self, output, roll, roll_steps, re_loss, output_encoder, target
+    ):  # -> tuple[Any, Any, Number | Any, Any | Literal[0, 1]]:
         if roll_steps == 0:
             roll = output.clone()
             roll_steps += 1

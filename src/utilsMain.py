@@ -431,7 +431,7 @@ def permute(data, params, size, gridsize) -> torch.tensor:
     Output:
         data: torch.tensor permuted data
     """
-    if ("FNO3d" in params.NN) or ("RNN" in params.NN):
+    if ("FNO3d" in params.NN) or ("RNN" in params.NN) or ("UNO" in params.NN):
         return permuteFNO3d(data, params)
 
     elif ("FNO2d" in params.NN) or ("MNO" in params.NN) or ("UNet" in params.NN):
@@ -473,7 +473,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
 
     input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
-    if "RNN3d" in params.NN:
+    if "RNN" in params.NN:
         output_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     return input_encoder, output_encoder
 

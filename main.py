@@ -59,6 +59,14 @@ def main(params):
         f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_Fact{fact}"
     )
     params.path = path
+    if params.diss_reg:
+        params.dissloss = params.loss_fn
+        params.sampling_fn = sample_uniform_spherical_shell
+        params.target_fn = linear_scale_dissipative_target
+        params.radii = (
+            params.radius,
+            (525 * params.S) + params.radius,
+        )  # inner and outer radii, in L2 norm of function space
     # check if path exists
     if not os.path.exists(f"results/{path}"):
         os.makedirs(f"results/{path}")

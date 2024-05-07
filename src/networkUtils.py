@@ -14,7 +14,7 @@ Exceptions:
 """
 
 import logging
-from neuralop.models import FNO2d, FNO3d  # , FNO
+from neuralop.models import FNO2d, FNO3d, UNO
 
 import torch
 import torch.nn.functional as F
@@ -34,11 +34,11 @@ logging.getLogger("wandb").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
-class UNet(nn.Module):
+class UNet2d(nn.Module):
     def __init__(self, in_channels, out_channels):
 
         # encoder
-        super(UNet, self).__init__()
+        super(UNet2d, self).__init__()
         self.encoder1 = nn.Sequential(
             nn.Conv2d(in_channels, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
@@ -236,7 +236,22 @@ def initializeNetwork(params) -> nn.Module:
             norm=False,
         )
     elif params.NN == "UNet":
-        model = UNet(params.input_channels, params.output_channels)
+        model = UNet2d(params.input_channels, params.output_channels)
+    elif params.NN == "UNO":
+        model = UNO(
+            in_channels=params.input_channels,
+            out_channels=params.output_channels,
+            uno_n_modes=[[params.modes] * params.d] * params.n_layers,
+            uno_out_channels=[64, 128, 128, 128],
+            uno_scalings=[[1, 1, 1], [0.5, 0.5, 0.5], [1, 1, 1],  [2, 2, 2]],
+            hidden_channels=params.width,
+            n_layers=params.n_layers,
+            use_mlp=False,
+            mlp_dropout=params.mlp_dropout,
+            preactivation=params.preactivation,
+            skip=params.skip_type,
+        )
+
     logger.debug(model)
     if params.level == "DEBUG":
         print(model)
