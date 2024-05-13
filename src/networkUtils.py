@@ -244,13 +244,16 @@ def initializeNetwork(params) -> nn.Module:
         powers = powers + powers[::-1]
         if params.n_layers % 2 == 1:
             powers.insert(params.n_layers // 2, params.n_layers // 2)
-
+        scalings = [[1, 1, 1] ]* params.n_layers
+        if params.n_layers > 2:
+            scalings[1] = [0.5, 0.5, 0.5]
+            scalings[-1] = [2, 2, 2]
         model = UNO(
             in_channels=params.input_channels,
             out_channels=params.output_channels,
             uno_n_modes=[[params.modes] * params.d] * params.n_layers,
             uno_out_channels=[params.width * 2**p for p in powers],
-            uno_scalings=[[1, 1, 1], [0.5, 0.5, 0.5], [1, 1, 1], [2, 2, 2]],
+            uno_scalings=scalings,
             hidden_channels=params.width,
             n_layers=params.n_layers,
             use_mlp=False,
