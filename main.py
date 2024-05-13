@@ -143,7 +143,7 @@ def main(params):
     ################################################################
     logging.info("........Testing neural network........")
     # test neural network
-    if "RNN" in params.NN:
+    if "RNN" in params.NN or "UNet" in params.NN:
         Trainer.evaluate_RNN(
             validLoader,
             output_encoder=output_encoder,
@@ -173,7 +173,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     print(f"Found {torch.cuda.device_count()} GPUs")
     ######### input parameters #########
-    parser.add_argument("--input", type=str, default="input", help="input file")
+    parser.add_argument(
+        "--input", type=str, default="input", help="input file")
     params = __import__(parser.parse_args().input)
     parser.add_argument("--N", type=int, default=params.N, help="Number of Data points")
     main(params)

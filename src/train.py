@@ -66,7 +66,13 @@ def dataVisibleCheck(
         output = output.permute(0, 4, 1, 2, 3)
         target = target.sum(dim=-1)
         output = output.sum(dim=-1)
-    elif "FNO3d" in save or "CNL2d" in save or "RNN" in save or "UNO" in save:
+    elif (
+        "FNO3d" in save
+        or "CNL2d" in save
+        or "RNN" in save
+        or "UNO" in save
+        or "UNet" in save
+    ):
         # permute to get variable on the end
         target = target.permute(0, 4, 2, 3, 1)
         output = output.permute(0, 4, 2, 3, 1)
@@ -394,7 +400,7 @@ class Trainer(object):
         if self.params.use_ddp:
             test_data_length //= self.num_gpus
             train_data_length //= self.num_gpus
-        if "RNN" in self.params.NN:
+        if "RNN" in self.params.NN or "UNet" in self.params.NN:
             test_data_length *= self.params.T
             train_data_length *= self.params.T
 
@@ -412,7 +418,7 @@ class Trainer(object):
 
             # set to train mode
             self.model.train()
-            if "RNN" in self.params.NN:
+            if "RNN" in self.params.NN or "UNet" in self.params.NN:
                 train_loss, _ = self.recurrent_loop(train_loader, output_encoder, epoch)
             else:
                 train_loss = self.batchLoop(train_loader, output_encoder, epoch)
@@ -429,7 +435,7 @@ class Trainer(object):
             self.model.eval()
             test_lp = 0
             test_h1 = 0
-            if "RNN" in self.params.NN:
+            if "RNN" in self.params.NN or "UNet" in self.params.NN:
                 test_h1, test_lp = self.recurrent_eval(
                     test_loader, output_encoder, epoch
                 )
@@ -777,8 +783,7 @@ class Trainer(object):
         # TODO: TEST THIS FUNCTION
         self.model.eval()
         data_length = len(data_loader.dataset)
-        if "RNN" in self.params.NN:
-            data_length *= self.params.T
+        data_length *= self.params.T
         # create a tensor to store the prediction
         num_samples = len(data_loader.dataset)
         sample = next(iter(data_loader))
@@ -892,7 +897,7 @@ class Trainer(object):
                 },
             )
 
-        if "RNN" in self.params.NN and len(pred.shape) == 4:
+        if len(pred.shape) == 4:
             pred = pred.unsqueeze(1)
             in_data = in_data.unsqueeze(1)
             truth = truth.unsqueeze(1)

@@ -139,9 +139,9 @@ def reduceToDensity(data: torch.tensor, params: dataclass) -> torch.tensor:
         data: torch.tensor data after reduction
     """
     # if "GravColl" in params.data_name and "FNO2d" in params.NN:
-    if "FNO2dDens" in params.NN or "MNO" in params.NN or "UNet" in params.NN:
+    if "FNO2dDens" in params.NN or "MNO" in params.NN:
         return data[..., 0, :]
-    elif "RNN2d" in params.NN:
+    elif "RNN2d" in params.NN or "UNet2d" in params.NN:
         return data[..., 0:1, :]
     return data
 
@@ -431,10 +431,15 @@ def permute(data, params, size, gridsize) -> torch.tensor:
     Output:
         data: torch.tensor permuted data
     """
-    if ("FNO3d" in params.NN) or ("RNN" in params.NN) or ("UNO" in params.NN):
+    if (
+        ("FNO3d" in params.NN)
+        or ("RNN" in params.NN)
+        or ("UNO" in params.NN)
+        or ("UNet" in params.NN)
+    ):
         return permuteFNO3d(data, params)
 
-    elif ("FNO2d" in params.NN) or ("MNO" in params.NN) or ("UNet" in params.NN):
+    elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
         return permuteFNO2d(data, params, size, gridsize)
 
     elif "CNL2d" in params.NN:
@@ -456,12 +461,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder: initialized input encoder
         output_encoder: initialized output encoder
     """
-    if (
-        "FNO2d" in params.NN
-        or "MNO" in params.NN
-        or "UNet" in params.NN
-        or "Ints" in params.DATA_PATH
-    ):
+    if "FNO2d" in params.NN or "MNO" in params.NN or "Ints" in params.DATA_PATH:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
     elif "GravColl" in params.data_name or "Turb" in params.data_name:
@@ -473,7 +473,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
 
     input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
-    if "RNN" in params.NN:
+    if ("RNN" in params.NN) or ("UNet" in params.NN):
         output_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     return input_encoder, output_encoder
 

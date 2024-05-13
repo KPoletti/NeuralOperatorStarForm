@@ -35,84 +35,86 @@ logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
 class UNet2d(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, width=64):
 
         # encoder
         super(UNet2d, self).__init__()
         self.encoder1 = nn.Sequential(
-            nn.Conv2d(in_channels, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(in_channels, width, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width),
             nn.Tanh(),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(width, width, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width),
             nn.Tanh(),
         )
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.encoder2 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(width, width * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width * 2),
             nn.Tanh(),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(width * 2, width * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width * 2),
             nn.Tanh(),
         )
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.encoder3 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(width * 2, width * 4, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width * 4),
             nn.Tanh(),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(width * 4, width * 4, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width * 4),
             nn.Tanh(),
         )
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.encoder4 = nn.Sequential(
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(width * 4, width * 8, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width * 8),
             nn.Tanh(),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(width * 8, width * 8, kernel_size=3, padding=1),
+            nn.BatchNorm2d(width * 8),
             nn.Tanh(),
         )
 
         # bottleneck
         self.bottleneck = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(512, 1024, kernel_size=3, padding=1),
+            nn.Conv2d(width * 8, width * 16, kernel_size=3, padding=1),
             nn.Tanh(),
-            nn.Conv2d(1024, 1024, kernel_size=3, padding=1),
+            nn.Conv2d(width * 16, width * 16, kernel_size=3, padding=1),
             nn.Tanh(),
         )
         # decoder
-        self.upconv1 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
+        self.upconv1 = nn.ConvTranspose2d(
+            width * 16, width * 8, kernel_size=2, stride=2
+        )
         self.decoder1 = nn.Sequential(
-            nn.Conv2d(1024, 512, kernel_size=3, padding=1),
+            nn.Conv2d(width * 16, width * 8, kernel_size=3, padding=1),
             nn.Tanh(),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.Conv2d(width * 8, width * 8, kernel_size=3, padding=1),
             nn.Tanh(),
         )
-        self.upconv2 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.upconv2 = nn.ConvTranspose2d(width * 8, width * 4, kernel_size=2, stride=2)
         self.decoder2 = nn.Sequential(
-            nn.Conv2d(512, 256, kernel_size=3, padding=1),
+            nn.Conv2d(width * 8, width * 4, kernel_size=3, padding=1),
             nn.Tanh(),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.Conv2d(width * 4, width * 4, kernel_size=3, padding=1),
             nn.Tanh(),
         )
-        self.upconv3 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.upconv3 = nn.ConvTranspose2d(width * 4, width * 2, kernel_size=2, stride=2)
         self.decoder3 = nn.Sequential(
-            nn.Conv2d(256, 128, kernel_size=3, padding=1),
+            nn.Conv2d(width * 4, width * 2, kernel_size=3, padding=1),
             nn.Tanh(),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.Conv2d(width * 2, width * 2, kernel_size=3, padding=1),
             nn.Tanh(),
         )
-        self.upconv4 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.upconv4 = nn.ConvTranspose2d(width * 2, width, kernel_size=2, stride=2)
         self.decoder4 = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
+            nn.Conv2d(width * 2, width, kernel_size=3, padding=1),
             nn.Tanh(),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.Conv2d(width, width, kernel_size=3, padding=1),
             nn.Tanh(),
         )
-        self.conv = nn.Conv2d(64, out_channels, kernel_size=1)
+        self.conv = nn.Conv2d(width, out_channels, kernel_size=1)
 
     def forward(self, x):
 
@@ -236,14 +238,19 @@ def initializeNetwork(params) -> nn.Module:
             norm=False,
         )
     elif params.NN == "UNet":
-        model = UNet2d(params.input_channels, params.output_channels)
+        model = UNet2d(params.input_channels, params.output_channels, params.width)
     elif params.NN == "UNO":
+        powers = [i for i in range(params.n_layers // 2)]
+        powers = powers + powers[::-1]
+        if params.n_layers % 2 == 1:
+            powers.insert(params.n_layers // 2, params.n_layers // 2)
+
         model = UNO(
             in_channels=params.input_channels,
             out_channels=params.output_channels,
             uno_n_modes=[[params.modes] * params.d] * params.n_layers,
-            uno_out_channels=[64, 128, 128, 128],
-            uno_scalings=[[1, 1, 1], [0.5, 0.5, 0.5], [1, 1, 1],  [2, 2, 2]],
+            uno_out_channels=[params.width * 2**p for p in powers],
+            uno_scalings=[[1, 1, 1], [0.5, 0.5, 0.5], [1, 1, 1], [2, 2, 2]],
             hidden_channels=params.width,
             n_layers=params.n_layers,
             use_mlp=False,
