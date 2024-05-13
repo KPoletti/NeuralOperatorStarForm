@@ -25,3 +25,4 @@ src/trainRefactor.py
 FNO_Grav_Turb_job
 sweep_Turb_RNN
 RNN_MHD_Turb_job
+Sweep*

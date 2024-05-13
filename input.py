@@ -15,9 +15,11 @@ doPlot = True  # Option to create plots
 use_mlp = True  # Option to use MLP
 encoder = False  # Option to use the encoder
 use_ddp = False  # Option to use multi-gpu distributed data
+
+diss_reg = False
 preactivation = True  # Option to use ResNet Preactivation
-saveNeuralNetwork = False  # Option to save the neural network
-positional_encoding = False
+saveNeuralNetwork = True  # Option to save the neural network
+positional_encoding = False  # TODO: Debug FNO3d with position encoding
 if positional_encoding:
     grid_boundaries = [[-1.25, 1.25], [-1.25, 1.25]]
 n_layers = 4
@@ -51,8 +53,9 @@ if data_name == "NS-Caltech":
 ##############################################
 elif data_name == "GravColl":
     S = 128
-    T = 9
-    T_in = 1
+    T = 5
+    T_in = 5
+    T_out = 14
     DATA_PATH = "../dataToSend/TrainingData/LowRes/"
     dN = 10
     mass = "ALL"
@@ -78,6 +81,7 @@ elif data_name == "Turb":
     dN = 10
     T = 5
     T_in = 5
+    T_out = 5
 
     mass = "12ALL"
     extras = "_Seed"
@@ -104,6 +108,7 @@ elif data_name == "GravInts":
     S = 64
     T = 5
     T_in = 5
+    T_out = 5
     DATA_PATH = "../dataToSend/TrainingData/Intensity/"
     dN = 10
     mass = "ALL"
@@ -129,6 +134,7 @@ elif data_name == "StarForm":
     S = 800
     T = 1
     T_in = 1
+    T_out = 5
     DATA_PATH = "../dataToSend/TrainingData/"
     # DATA_PATH = "../dataToSend/FullDataTensor/"
     mu = "2"
@@ -157,6 +163,7 @@ elif data_name == "CATS":
     S = 256
     T = 1
     T_in = 1
+    T_out = 5
 
     input_channels = 1
     output_channels = 1
@@ -186,18 +193,10 @@ rank = 0.001
 norm = "group_norm"
 g = (1, 1)
 skip_type = "soft-gating"  # "identity", "linear" or "soft-gating"
-if NN == "MNO":
-    out_dim = 1
-    dissloss = nn.MSELoss(reduction="mean")
-    sampling_fn = sample_uniform_spherical_shell
-    target_fn = linear_scale_dissipative_target
+if diss_reg:
     radius = 156.25 * S  # radius of inner ball
     scale_down = 0.1  # rate at which to linearly scale down inputs
     loss_weight = 0.01 * S**2  # normalized by L2 norm in function space
-    radii = (
-        radius,
-        (525 * S) + radius,
-    )  # inner and outer radii, in L2 norm of function space
 ##############################################
 # Training parameters
 ##############################################
@@ -207,7 +206,7 @@ epochs = 5
 batch_size = 100
 optimizer = "Adam"
 scheduler_step = 10
-cosine_step = 5
+cosine_step = 1
 scheduler_gamma = 0.5
 if NN == "FNO3d" or NN == "CNL2d":
     d = 3
