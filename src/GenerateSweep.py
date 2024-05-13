@@ -10,7 +10,7 @@ import wandb
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
 )
-import input as params  # noqa: E402
+import input_FNO2d_Turb as params  # noqa: E402
 
 
 def convertParamsToDict(params):
@@ -64,21 +64,21 @@ def main():
     # define the sweep_config
     sweep_config = {
         "method": "random",
-        "metric": {"name": "Test-Loss", "goal": "minimize"},
+        "metric": {"name": "Test-Loss-L2", "goal": "minimize"},
     }
     # create the sweep parameters
     sweep_params = {
         "modes": {"distribution": "int_uniform", "min": 4, "max": 48},
         "width": {
-            "distribution": "q_log_uniform_values",
-            "q": 2,
+            "distribution": "int_uniform",
             "min": 12,
             "max": 128,
         },
-        "encoder": {"values": [True, False]},
-        "lr": {"distribution": "log_uniform_values", "min": 1e-8, "max": 1e-1},
-        "scheduler_step": {"values": [5, 10, 25, 35, 50, 60, 75, 100]},
+        "lr": {"min": 1e-5, "max": 1e-2},
+        "batch_size": {"values": [5, 10, 15, 25]},
         "loss_name": {"values": ["LpLoss", "H1Loss"]},
+        "n_layers": {"min": 2, "max": 6},
+        "skip_type": {"values": ["linear", "soft-gating", "identity"]},
     }
     # create a list of the sweep parameters
     list(sweep_params.keys())
@@ -89,7 +89,7 @@ def main():
     # add sweep parameters to sweep_config
     sweep_config["parameters"] = sweep_params
     # Save the sweep config to a yaml file
-    with open(f"sweep_config_{params.data_name}.yaml", "w") as f:
+    with open(f"sweep_config_{params.data_name}_{params.NN}.yaml", "w") as f:
         yaml.dump(sweep_config, f)
 
 
