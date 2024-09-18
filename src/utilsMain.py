@@ -11,6 +11,7 @@ import torch
 from neuralop.datasets.transforms import PositionalEmbedding2D
 from neuralop.utils import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
+import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 
 import wandb
@@ -162,6 +163,37 @@ def logData(data: torch.tensor, params: dataclass) -> torch.tensor:
     return data
 
 
+def nondimensionalize(data: torch.tensor) -> torch.tensor:
+    """
+    Removes dimension on data.
+    Input:
+        data: torch.tensor data to log
+    Output:
+        data: torch.tensor data after logging
+    """
+    print(f"#######################################################")
+    print(f"Dimensional Range")
+    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
+    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
+    print(f"#######################################################")
+    mass_scale = 600 * 1.989e33  # 600 M_sun in grams
+    length_scale = 2.5 * 3.086e18  # 2.5 pc in cm
+    time_scale = 8.29 * 3600 * 24 * 365 * 1e3  # 8.29kyr in secs
+    surf_density_scale = mass_scale / length_scale**2
+    # create a length scale for km since velocity is in km/s
+    length_scale_km = length_scale * 1e-05  # km
+    velocity_scale = length_scale_km / time_scale
+    # remove dimensions
+    data[..., 0, :] /= surf_density_scale
+    data[..., 1:, :] /= velocity_scale
+    print(f"#######################################################")
+    print(f"Nondimensional Range")
+    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
+    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
+    print(f"#######################################################")
+    return data
+
+
 def loadData(params: dataclass, is_data: bool) -> tuple:
     """
     Load data from the path specified in the input file
@@ -183,6 +215,7 @@ def loadData(params: dataclass, is_data: bool) -> tuple:
     if is_data:
         filename = params.TRAIN_PATH
         full_data = torch.load(filename)
+        # full_data = nondimensionalize(full_data)
         full_data = full_data.float()
         # reduce to density
         full_data = reduceToDensity(full_data, params)
@@ -263,6 +296,8 @@ def timestepSplit(
         # find the keys that correspond to the time step to use t+{dN-1}
         keys_a = [key for key in keys if int(key.split("+")[1]) <= params.T_in - 1]
         keys_u = [key for key in keys if int(key.split("+")[1]) > params.T_out]
+        if "RNN" in params.NN or "UNet" in params.NN or params.dN == 2:
+            keys_u = [key for key in keys if int(key.split("+")[1]) > params.T_out - 1]
         # split the dataframe
         data_info_a = data_info[keys_a]
         data_info_u = data_info[keys_u]
@@ -284,6 +319,7 @@ def dfTolist(frame: pd.DataFrame) -> list:
     keys = frame.keys()
     for i in range(len(frame)):
         info = {}
+
         # find the mass of the star
         snap = frame.iloc[i][keys[0][0]]["file"]
         if ~hasattr(snap, "spilt"):
@@ -607,17 +643,27 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     shuffle_type = True
     train_sampler = None
     test_sampler = None
+    num_work = 1
     if params.use_ddp:
         shuffle_type = False
-        train_sampler = DistributedSampler(train_dataset)
-        test_sampler = DistributedSampler(tests_dataset)
+
+        train_sampler = DistributedSampler(
+            train_dataset,
+            num_replicas=dist.get_world_size(),
+            rank=dist.get_rank(),
+        )
+        test_sampler = DistributedSampler(
+            tests_dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank()
+        )
         tests_size //= torch.cuda.device_count()
+        num_work = torch.cuda.device_count()
     # Create the data loader
     # TODO: Fix the batch size for the tests and valid loaders
     # On gravcoll, for (15, 10, 200, 200 ,3) the test loss will grow if validSize =0
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=params.batch_size,
+        num_workers=num_work,
         shuffle=shuffle_type,
         sampler=train_sampler,
         drop_last=True,
@@ -641,4 +687,14 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=1, shuffle=False, drop_last=True
     )
+    if params.use_ddp:
+        return (
+            train_loader,
+            test_loader,
+            valid_loader,
+            input_encoder,
+            output_encoder,
+            train_sampler,
+            test_sampler,
+        )
     return train_loader, test_loader, valid_loader, input_encoder, output_encoder
