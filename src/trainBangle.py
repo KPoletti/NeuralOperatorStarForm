@@ -19,7 +19,7 @@ from torch import device, nn
 import torch.distributed as dist
 import wandb
 
-from neuralop import H1Loss, LpLoss #type: ignore 
+from neuralop import H1Loss, LpLoss  # type: ignore
 from src.plottingUtils import Animation_true_pred_error
 
 
@@ -27,6 +27,8 @@ sns.set_color_codes(palette="deep")
 logger = logging.getLogger(__name__)
 logging.getLogger("wandb").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
+
 class NormalizedMSE:
     """Computes the normalized MSE loss for a given input tensors x and y.
 
@@ -120,7 +122,7 @@ class TrainerDuo(object):
     def __init__(
         self,
         model: nn.Module,
-        params: dataclass, #type: ignore
+        params: dataclass,  # type: ignore
         device: torch.device,
         ckp_path: str = "",
         save_every: int = 1,
@@ -186,11 +188,13 @@ class TrainerDuo(object):
         # define a test loss function that will be the same regardless of training
         l2loss = LpLoss(d=self.params.d, p=2, reduce_dims=(0, 1))
         h1loss = H1Loss(d=self.params.d, reduce_dims=(0, 1))
-        l2loss1d = LpLoss(d=1,p=2)
-        def weighted_loss(x, y, mask, alpha=self.params.alpha):
-            return (1 - alpha) * l2loss1d(x[mask], y[mask]) + alpha * l2loss1d(x[~mask], y[~mask])
+        l2loss1d = LpLoss(d=1, p=2)
 
- 
+        def weighted_loss(x, y, mask, alpha=self.params.alpha):
+            return (1 - alpha) * l2loss1d(x[mask], y[mask]) + alpha * l2loss1d(
+                x[~mask], y[~mask]
+            )
+
         self.test_losses = {"l2loss": l2loss, "h1loss": h1loss, "weight": weighted_loss}
 
     def batchLoop(self, train_loader, output_encoder=None, epoch: int = 1):
@@ -228,16 +232,19 @@ class TrainerDuo(object):
                 target = output_encoder.decode(target)
                 # decode the output
                 output = output_encoder.decode(output)
-            mask = torch.stack([data[...,i] >= 3 * data[...,i].std() for i in range(data.shape[-1])],dim=-1)
+            mask = torch.stack(
+                [data[..., i] >= 3 * data[..., i].std() for i in range(data.shape[-1])],
+                dim=-1,
+            )
             # compute the loss
             if self.params.loss_name == "weighted":
-                loss = self.loss(output, target, mask)  
+                loss = self.loss(output, target, mask)
             else:
                 # loss = self.loss(output, target)
                 weights = torch.ones_like(output)
-                weights[~mask] = self.params.alpha**(1/2)  
-                loss = self.loss(weights*output, weights*target)
- 
+                weights[~mask] = self.params.alpha ** (1 / 2)
+                loss = self.loss(weights * output, weights * target)
+
             # Backpropagate the loss
             loss.backward()
             self.optimizer.step()
@@ -245,7 +252,7 @@ class TrainerDuo(object):
                 self.scheduler.step()
             train_loss += loss.item()
             del output, target, data, loss
-        torch.autograd.set_detect_anomaly(mode=False) #type: ignore
+        torch.autograd.set_detect_anomaly(mode=False)  # type: ignore
         return train_loss
 
     def _save_snapshot(self, epoch):
@@ -263,9 +270,11 @@ class TrainerDuo(object):
 
     def train(
         self,
-        train_loader: torch.utils.data.DataLoader, #type: ignore
-        test_loader: torch.utils.data.DataLoader, # type: ignore
+        train_loader: torch.utils.data.DataLoader,  # type: ignore
+        test_loader: torch.utils.data.DataLoader,  # type: ignore
         output_encoder=None,
+        train_sampler=None,
+        test_sampler=None,
     ) -> None:
         """
         Train the model
@@ -317,8 +326,14 @@ class TrainerDuo(object):
                 if output_encoder is not None:
                     output = output_encoder.decode(output)
                     # do not decode the test target because test data isn't encoder
-                mask = torch.stack([data[...,i] >= 3 * data[...,i].std() for i in range(data.shape[-1])],dim=-1)
-               # mask = data > 3 * data.std() + data.mean()
+                mask = torch.stack(
+                    [
+                        data[..., i] >= 3 * data[..., i].std()
+                        for i in range(data.shape[-1])
+                    ],
+                    dim=-1,
+                )
+                # mask = data > 3 * data.std() + data.mean()
                 for key, loss_type in self.test_losses.items():
                     if key == "weight":
                         test_losses[key] += loss_type(output, target, mask).item()
@@ -363,8 +378,12 @@ class TrainerDuo(object):
                 }
             )
 
-            if (epoch >= 0.25*self.params.epochs) and np.abs(old_test - test_losses["l2loss"] ) <=1e-6:
-                print("EARLY STOPPING CRITERIA MET ON EPOCH", epoch, "on device", device)
+            if (epoch >= 0.25 * self.params.epochs) and np.abs(
+                old_test - test_losses["l2loss"]
+            ) <= 1e-6:
+                print(
+                    "EARLY STOPPING CRITERIA MET ON EPOCH", epoch, "on device", device
+                )
                 early_stop += 1
             if self.params.use_ddp:
                 dist.all_reduce(early_stop, op=dist.ReduceOp.SUM)
@@ -401,10 +420,7 @@ class TrainerDuo(object):
 
         logging.getLogger("matplotlib").setLevel(logging.WARNING)
         mask = torch.stack(
-            [
-                in_data[i] > 3 * in_data[i].std()
-                for i in range(in_data.shape[0])
-            ]
+            [in_data[i] > 3 * in_data[i].std() for i in range(in_data.shape[0])]
         )
 
         # flatten the masked data
@@ -428,7 +444,7 @@ class TrainerDuo(object):
         ax.plot([-angle, angle], [-angle, angle], "r--")
         ax.set_xlabel("True Angle (radians)")
         ax.set_ylabel("FNO Predicted Angle (radians)")
-        ax.set_ylim(truth_flat.min(),truth_flat.max())
+        ax.set_ylim(truth_flat.min(), truth_flat.max())
         image_sc = wandb.Image(fig_sc)
         plt.savefig(f"{self.plot_path}/{savename}_scatter.png")
         plt.close()
@@ -441,7 +457,7 @@ class TrainerDuo(object):
         ax.set_xlabel(r"$\Phi_{FNO} - \Phi_{True}$ (degrees)")
         # annotate the plot with the mean and standard deviation
         ax.annotate(
-            f"Mean ($\Phi_p - \Phi_T$): {torch.mean(pred_flat- truth_flat).item():0.3f}", #type: ignore
+            f"Mean ($\Phi_p - \Phi_T$): {torch.mean(pred_flat- truth_flat).item():0.3f}",  # type: ignore
             xy=(0.05, 0.95),
             xycoords="axes fraction",
             fontsize=12,
@@ -449,7 +465,7 @@ class TrainerDuo(object):
             va="top",
         )
         ax.annotate(
-            f"STD ($\Phi_p - \Phi_T$): {torch.std(pred_flat- truth_flat).item():0.3f}", #type: ignore
+            f"STD ($\Phi_p - \Phi_T$): {torch.std(pred_flat- truth_flat).item():0.3f}",  # type: ignore
             xy=(0.05, 0.85),
             xycoords="axes fraction",
             fontsize=12,
@@ -473,7 +489,7 @@ class TrainerDuo(object):
 
     def evaluate(
         self,
-        data_loader: torch.utils.data.DataLoader, #type: ignore
+        data_loader: torch.utils.data.DataLoader,  # type: ignore
         input_encoder=None,
         output_encoder=None,
         savename: str = "",
@@ -526,7 +542,13 @@ class TrainerDuo(object):
 
                 # compute the loss
                 # mask = data > 3 * data.std() + data.mean()
-                mask = torch.stack([data[...,i] >= 3 * data[...,i].std() for i in range(data.shape[-1])],dim=-1)
+                mask = torch.stack(
+                    [
+                        data[..., i] >= 3 * data[..., i].std()
+                        for i in range(data.shape[-1])
+                    ],
+                    dim=-1,
+                )
                 for key, loss_type in self.test_losses.items():
                     if key == "weight":
                         test_losses[key] += loss_type(output, target, mask).item()
