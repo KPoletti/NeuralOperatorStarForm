@@ -155,6 +155,7 @@ class Trainer(object):
         ntrain = int((self.params.split[0] * self.params.N))
         self.loss = self.params.loss_fn
         warmup_ep = self.params.epochs * 5 // 100
+        warmup_ep = min(warmup_ep, 10)
 
         iterations = (
             (self.params.epochs - warmup_ep)
@@ -238,12 +239,10 @@ class Trainer(object):
         # select a random batch
         rand_point = np.random.randint(0, len(train_loader))
         torch.autograd.set_detect_anomaly(True)
-
         for batch_idx, sample in enumerate(train_loader):
             data = sample["x"].to(self.device)
             target = sample["y"].to(self.device)
             output = self.model(data)
-
             if epoch == 0 and batch_idx == 0:
                 logger.debug(f"Batch Data Shape: {data.shape}")
                 logger.debug(f"Batch Target Shape: {target.shape}")
@@ -276,12 +275,12 @@ class Trainer(object):
                 diss_loss_l2 += diss_loss.item()
                 loss += diss_loss
             # Backpropagate the loss
+            self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             if hasattr(self, "scheduler"):
                 self.scheduler.step()
             train_loss += loss.item()
-            self.optimizer.zero_grad(set_to_none=True)
             del output, target, data, loss
 
         return train_loss
@@ -385,6 +384,8 @@ class Trainer(object):
         test_loader: torch.utils.data.DataLoader,
         output_encoder=None,
         sweep: bool = False,
+        train_sampler=None,
+        test_sampler=None,
     ) -> None:
         """
         Train the model
@@ -415,6 +416,9 @@ class Trainer(object):
         # start training
         for epoch in range(self.epochs_run, self.params.epochs):
             epoch_timer = time.time()
+            if self.params.use_ddp:
+                train_sampler.set_epoch(epoch)
+                test_sampler.set_epoch(epoch)
 
             # set to train mode
             self.model.train()
@@ -514,9 +518,10 @@ class Trainer(object):
             # early stopping
             avg_diff[idx] = test_lp - old_test
             idx = (idx + 1) % 5
-            if (epoch >= 0.5 * self.params.epochs) and np.abs(
-                old_test - test_lp
-            ) <= 1e-6:
+            if (
+                (epoch >= 0.45 * self.params.epochs)
+                and np.abs(old_test - test_lp) <= 1e-4
+            ):
                 print(
                     "EARLY STOPPING CRITERIA MET ON EPOCH",
                     epoch,
@@ -524,7 +529,10 @@ class Trainer(object):
                     self.device,
                 )
                 early_stop += 1
-            elif (epoch >= 0.5 * self.params.epochs) and avg_diff.mean() > 1e-3:
+            elif (
+                (epoch >= 0.45 * self.params.epochs)
+                and avg_diff.mean() > 1e-3
+            ):
                 print(
                     "EARLY STOPPING OVERFITTING CRITERIA MET ON EPOCH",
                     epoch,
@@ -532,12 +540,9 @@ class Trainer(object):
                     self.device,
                 )
                 early_stop += 1
-            if self.params.use_ddp:
-                dist.all_reduce(early_stop, op=dist.ReduceOp.SUM)
             if early_stop != 0:
                 break
             old_test = test_lp
-
         # fine_tune(self.model, self.params, self.device, self.optimizer, self.scheduler)
         if self.params.saveNeuralNetwork:
             modelname = f"results/{self.params.path}/models/{self.params.NN}.pt"
@@ -688,7 +693,7 @@ class Trainer(object):
             in_data = in_data.permute(0, ind_tim, ind_grid, ind_grid + 1, ind_dim)
 
         # and (n,x,y,t) flatten to (t*n, x, y)
-        if "FNO2dALL" in self.params.NN:  # or num_dims < 5:
+        if "FNO2dALL" in self.params.NN or self.params.dN == 2:  # or num_dims < 5:
             prediction = prediction[:, 0, ...]
             truth = truth[:, 0, ...]
             roll = roll[:, 0, ...]
@@ -747,8 +752,9 @@ class Trainer(object):
         num_dims = len(prediction.shape)
         # find the first index where grid is
 
-        ind_grid = [i for i in range(num_dims) if size[i] == self.params.S]
-        dims_to_rmse = tuple(range(ind_grid[0], num_dims))
+        dims_to_rmse = [i for i in range(num_dims) if size[i] == self.params.S]
+        # dims_to_rmse = tuple(range(ind_grid[0], num_dims))
+
         num = count_model_params(self.model)
 
         # compute RMSE
@@ -789,9 +795,10 @@ class Trainer(object):
         sample = next(iter(data_loader))
         data = sample["x"].to(self.device)
         target = sample["y"].to(self.device)
-        lentime = len(sample["meta_y"]["time"]) - 1
+        lentime = len(sample["meta_y"]["time"])
         size = [num_samples] + [d for d in target.shape if d != 1]
-
+        compute_timer = 0
+        t1 = 0
         # initialize
         pred = torch.zeros(size)
         roll = torch.zeros(size)
@@ -823,7 +830,7 @@ class Trainer(object):
                 cur_mass = meta_data["mass"][0]
                 target = sample["y"].to(self.device)
                 data = sample["x"].to(self.device).squeeze(-1)
-                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
+                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"])
                 if roll_steps == 0:
                     roll_t = data.clone()
                 elif cur_mass != mass:
@@ -834,14 +841,17 @@ class Trainer(object):
                     roll_steps = 0
                 for t in range(0, target.shape[-1], step):
                     targ_t = target[..., t : t + step].squeeze(-1)
+                    t0 = time.time()
                     pred_t = self.model(data)
+                    t1 += time.time() - t0
                     # apply the model to previous output
                     roll_t = self.model(roll_t)
                     data = pred_t
+                    roll_decode = roll_t
                     if output_encoder is not None:
                         pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
                         roll_decode = output_encoder.decode(
-                            roll_t.unsqueeze(-1)
+                            roll_decode.unsqueeze(-1)
                         ).squeeze(-1)
                     if t == 0:
                         pred_full = pred_t.unsqueeze(-1)
@@ -855,6 +865,7 @@ class Trainer(object):
                     loss_pred += self.test_loss_lp(pred_t.float(), targ_t)
                     loss_roll += self.test_loss_lp(roll_decode.float(), targ_t)
 
+                compute_timer += t1
                 if roll_steps == 5:
                     roll_steps = 0
                 else:
@@ -862,13 +873,15 @@ class Trainer(object):
                 test_pred += loss_pred.item()
                 test_roll += loss_roll.item()
                 # assign the values to the tensors
+                data_0 = sample["x"].to(self.device)
                 if input_encoder is not None:
-                    data_0 = input_encoder.decode(sample["x"].to(self.device))
+                    data_0 = input_encoder.decode(data_0)
                 pred[batchidx] = pred_full
                 in_data[batchidx] = torch.cat((data_0, pred_full[..., :-1]), dim=-1)
                 truth[batchidx] = target
                 roll[batchidx] = roll_full
-
+            # average the compute timer
+            forward_avg = compute_timer / batchidx
             # normalize test loss
             test_pred /= data_length
             test_roll /= data_length
@@ -877,7 +890,14 @@ class Trainer(object):
             num_trained = self.params.N * self.params.split[0]
             print(f"Final Loss for {int(num_trained)}: {test_pred} ")
             print(f"Reapply Loss: {test_roll}")
-            wandb.log({"Valid Loss": test_pred, "Reapply Loss": test_roll})
+            wandb.log(
+                {
+                    "Valid Loss": test_pred,
+                    "Reapply Loss": test_roll,
+                    "average-forward-time": forward_avg,
+                }
+            )
+        self.log_RMSE(pred, truth)
 
         time_data = time_data.flatten()
         print(f"pred shape: {pred.shape}")
@@ -955,7 +975,7 @@ class Trainer(object):
         truth = torch.zeros(size)
         in_data = torch.zeros(in_size)
         time_data = torch.zeros(num_samples, lentime)
-
+        t1 = 0
         re_loss = 0
         test_loss = 0
         roll_batch = 0
@@ -972,7 +992,9 @@ class Trainer(object):
                 meta_data = sample["meta_x"]
                 cur_mass = meta_data["mass"][0]
                 time_data[batchidx] = torch.tensor(sample["meta_y"]["time"])
+                t_0 = time.time()
                 output = self.model(data)
+                t1 += time.time() - t_0
                 if rolling_condition:
                     roll_steps *= cur_mass == mass
                     roll_batch, roll_out, re_loss_i, roll_steps = self.rolling_update(
@@ -1010,7 +1032,7 @@ class Trainer(object):
                     roll_batch = roll_batch.unsqueeze(0)
 
                 mass_list = mass_list + [cur_mass] * lentime
-
+            average_time = t1 / batchidx
             # normalize test loss
             test_loss /= len(data_loader.dataset)
             re_loss /= len(data_loader.dataset)
@@ -1020,7 +1042,13 @@ class Trainer(object):
             print(f"Final Loss for {int(num_trained)}: {test_loss} ")
             print(f"Reapply Loss: {re_loss}")
 
-            wandb.log({"Valid Loss": test_loss, "Reapply Loss": re_loss})
+            wandb.log(
+                {
+                    "Valid Loss": test_loss,
+                    "Reapply Loss": re_loss,
+                    "average-forward-time": average_time,
+                }
+            )
 
         self.log_RMSE(pred, truth)
         if len(savename) > 0:
