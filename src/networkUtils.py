@@ -158,6 +158,8 @@ def initializeNetwork(params) -> nn.Module:
             hidden_channels=params.width,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
+            projection_channels=96,
+            lifting_channels=96,
             use_mlp=params.use_mlp,
             mlp_dropout=params.mlp_dropout,
             preactivation=params.preactivation,
