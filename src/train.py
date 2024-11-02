@@ -703,6 +703,13 @@ class Trainer(object):
             truth = truth.squeeze().flatten(0, 1)
             roll = roll.squeeze().flatten(0, 1)
             in_data = in_data.squeeze().flatten(0, 1)
+        # convert back to the non-log values
+        if self.params.log:
+            base = torch.tensor(10.0)
+            prediction = base.pow(prediction)
+            truth = base.pow(truth)
+            roll = base.pow(roll)
+            in_data = base.pow(in_data)
 
         num_dims = len(prediction.shape)
         if do_animate:

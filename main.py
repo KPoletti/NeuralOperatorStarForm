@@ -55,7 +55,7 @@ def main(params):
         fact = "None"
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
-        f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
+        f"_m{params.modes}_w{params.width}_lp{params.dim_high}_S{params.S}_Lrs{params.n_layers}"
         f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_Fact{fact}"
     )
     params.path = path
