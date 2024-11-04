@@ -161,13 +161,15 @@ def initializeNetwork(params) -> nn.Module:
             hidden_channels=params.width,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
+            projection_channels=params.dim_high,
+            lifting_channels=params.dim_high,
             use_mlp=params.use_mlp,
             mlp_dropout=params.mlp_dropout,
             preactivation=params.preactivation,
             n_layers=params.n_layers,
             skip=params.skip_type,
             fno_block_precision="mixed",
-            stablizer="Tanh",
+            stablizer="tanh",
             factorization=params.factorization,
             positional_embedding=None,
             rank=params.rank,
@@ -179,7 +181,10 @@ def initializeNetwork(params) -> nn.Module:
             n_modes_depth=params.modes,
             n_modes_width=params.modes,
             n_modes_height=params.modes,
+            # max_n_modes=(60, 60, 40),
             hidden_channels=params.width,
+            projection_channels=params.dim_high,
+            lifting_channels=params.dim_high,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
             projection_channels=params.width * 2,
@@ -190,7 +195,7 @@ def initializeNetwork(params) -> nn.Module:
             n_layers=params.n_layers,
             skip=params.skip_type,
             fno_block_precision="mixed",
-            stablizer="Tanh",
+            stablizer="tanh",
             factorization=params.factorization,
             rank=params.rank,
             joint_factorization=True,
@@ -250,6 +255,7 @@ def initializeNetwork(params) -> nn.Module:
         powers = powers + powers[::-1]
         if params.n_layers % 2 == 1:
             powers.insert(params.n_layers // 2, params.n_layers // 2)
+        scalings = [[1, 1, 1]] * params.n_layers
         scalings = [[1, 1, 1]] * params.n_layers
         if params.n_layers > 2:
             scalings[1] = [0.5, 0.5, 0.5]

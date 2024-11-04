@@ -40,6 +40,7 @@ def set_Loss(params):
 def main(config=None):
     import input as params
 
+    torch.manual_seed(42)
     with wandb.init() as run:
         config = wandb.config
         # reset values based on sweep
@@ -132,7 +133,7 @@ def main(config=None):
         ################################################################
         logger.info("........Testing neural network........")
         # test neural network
-        if params.NN == "RNN":
+        if params.NN == "RNN" or params.NN == "UNet":
             Trainer.evaluate_RNN(
                 validLoader,
                 output_encoder=output_encoder,

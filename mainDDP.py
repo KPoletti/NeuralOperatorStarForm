@@ -48,7 +48,11 @@ def main(params):
     wandb.login(key=wandb_api_key)
     # convert params to dictionary
     paramsJSON = convertParamsToJSON(params)
-    run = wandb.init(project=params.data_name, config=paramsJSON,group="DDP",)
+    run = wandb.init(
+        project=params.data_name,
+        config=paramsJSON,
+        group="DDP",
+    )
     print(f"Wandb saved to {run.dir}")  # type: ignore
 
     ################################################################
@@ -56,6 +60,9 @@ def main(params):
     ################################################################
     # grab the ending of the density file with .pt
     N = int((params.split[0] + params.split[1]) * params.N)
+    fact = params.factorization
+    if params.factorization is None:
+        fact = "None"
     # create output folder
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
@@ -101,6 +108,8 @@ def main(params):
         validLoader,
         input_encoder,
         output_encoder,
+        train_sampler,
+        test_sampler,
     ) = prepareDataForTraining(params, params.S)
     logging.info(f"Data loaded in {time.time() - dataTime} seconds")
 
@@ -127,7 +136,7 @@ def main(params):
     ################################################################
     logging.info("........Training neural network........")
     # train neural network
-    if "Duo" in params.data_name: 
+    if "Duo" in params.data_name:
         Trainer = myTrainBangle.TrainerDuo(
             model=DDP_model,
             params=params,
@@ -143,7 +152,13 @@ def main(params):
             save_every=20,
             ckp_path=f"results/{path}/models/{params.NN}_snapshot.pt",
         )
-    Trainer.train(trainLoader, testLoader, output_encoder)
+    Trainer.train(
+        trainLoader,
+        testLoader,
+        output_encoder,
+        train_sampler=train_sampler,
+        test_sampler=test_sampler,
+    )
     savename = ""
     ################################################################
     # test neural network
@@ -155,7 +170,7 @@ def main(params):
         savename = "ValidationData"
         logging.info("........Testing neural network........")
         # test neural network
-        if params.NN == "RNN":
+        if params.NN == "RNN" or params.NN == "UNet":
             Trainer.evaluate_RNN(
                 validLoader,
                 output_encoder=output_encoder,

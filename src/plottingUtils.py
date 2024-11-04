@@ -1,12 +1,14 @@
 """This module contains functions for plotting the data. 
 """
 
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib import animation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
+from neuralop.utils import spectrum_2d
 
 sns.set_style("white")
 
@@ -84,7 +86,6 @@ def Animation_true_pred_error(
     truthData = truthData.cpu().detach().numpy()
     predcData = predcData.cpu().detach().numpy()
     numOfFrames = np.min([500, truthData.shape[0]])
-    error_type = "absErr"
     log_axis = ""
     error2use = np.abs(truthData - predcData)
     error_title = r"Absolute Error  $|\rho_{pred} - \rho_{true}|$"
@@ -96,6 +97,7 @@ def Animation_true_pred_error(
         )
 
     movie_name = f"{savePath}FlowVideo_{error_type}{log_axis}.mp4"
+    spect_name = f"{savePath}Spectrum.png"
     fig, ax, im1, im2, im3 = plot_timeStep_NoBounds(
         truthData, predcData, error2use, 0, save=False, saveName="test"
     )
@@ -150,6 +152,37 @@ def Animation_true_pred_error(
     )
 
     print(f"Saved to {movie_name}")
+    plt.close()
+    S = truthData.shape[-1]
+    print(truthData.shape)
+    truth_sp = spectrum_2d(torch.from_numpy(truthData), S)
+    pred_sp = spectrum_2d(torch.from_numpy(predcData), S)
+
+    error_sp = np.abs(truth_sp - pred_sp)
+    # check the spectrum
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+    ax[0].semilogy(truth_sp, label=f"Truth ")
+    ax[0].semilogy(
+        pred_sp,
+        marker=".",
+        markerfacecolor="None",
+        # markeredgecolor=c[i],
+        linestyle="None",
+        label=f"Prediction",
+    )
+    ax[1].semilogy(error_sp, label=f"Error")
+
+    ax[0].set_xlabel("Wave Number")
+    ax[0].set_ylabel("Power Spectrum")
+    ax[0].grid()
+    ax[0].legend()
+    ax[1].set_xlabel("Wave Number")
+    ax[1].set_ylabel("Difference Power Spectrum")
+    ax[1].grid()
+
+    ax[1].legend()
+    ax[0].set_title(savePath.split("ep")[1])
+    plt.savefig(spect_name)
     plt.close()
 
 
