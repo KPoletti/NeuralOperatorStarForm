@@ -14,19 +14,22 @@ Exceptions:
 """
 
 import logging
-from neuralop.models import FNO2d, FNO3d, UNO
+
+
+from neuralop.models import FNO2d, FNO3d, UNO, FNO
 
 import torch
 import torch.nn.functional as F
-from cliffordlayers.models.basic.twod import (
-    CliffordFourierBasicBlock2d,
-    CliffordFluidNet2d,
-)
-from cliffordlayers.models.basic.threed import (
-    CliffordFourierBasicBlock3d,
-    CliffordMaxwellNet3d,
-)
-from cliffordlayers.models.utils import partialclass
+
+# from cliffordlayers.models.basic.twod import (
+#     CliffordFourierBasicBlock2d,
+#     CliffordFluidNet2d,
+# )
+# from cliffordlayers.models.basic.threed import (
+#     CliffordFourierBasicBlock3d,
+#     CliffordMaxwellNet3d,
+# )
+# from cliffordlayers.models.utils import partialclass
 from torch import nn
 
 logger = logging.getLogger(__name__)
@@ -152,7 +155,7 @@ def initializeNetwork(params) -> nn.Module:
     model = nn.Module()
     # TODO: allow MLP to be input parameter
     if "FNO2d" in params.NN or params.NN == "RNN":
-        model = FNO2d(
+        return FNO2d(
             n_modes_height=params.modes,
             n_modes_width=params.modes,
             hidden_channels=params.width,
@@ -166,18 +169,21 @@ def initializeNetwork(params) -> nn.Module:
             fno_block_precision="mixed",
             stablizer="Tanh",
             factorization=params.factorization,
+            positional_embedding=None,
             rank=params.rank,
             joint_factorization=True,
             norm=params.norm,
         )
     elif params.NN == "FNO3d" or params.NN == "RNN3d":
-        model = FNO3d(
+        return FNO3d(
             n_modes_depth=params.modes,
             n_modes_width=params.modes,
             n_modes_height=params.modes,
             hidden_channels=params.width,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
+            projection_channels=params.width * 2,
+            lifting_channels=params.width * 2,
             use_mlp=params.use_mlp,
             mlp_dropout=params.mlp_dropout,
             preactivation=params.preactivation,
@@ -191,7 +197,7 @@ def initializeNetwork(params) -> nn.Module:
             norm=params.norm,
         )
     elif params.NN == "MNO":
-        model = FNO2d(
+        return FNO2d(
             n_modes_height=params.modes,
             n_modes_width=params.modes,
             hidden_channels=params.width,
@@ -203,64 +209,82 @@ def initializeNetwork(params) -> nn.Module:
             n_layers=params.n_layers,
             skip=params.skip_type,
         )
-    elif params.NN == "CNL2d":
-        model = CliffordFluidNet2d(
-            g=params.g,
-            block=partialclass(
-                "CliffordFourierBasicBlock2d",
-                CliffordFourierBasicBlock2d,
-                modes1=params.modes,
-                modes2=params.modes,
-            ),
-            num_blocks=[1, 1, 1, 1],
-            in_channels=params.input_channels,
-            out_channels=params.output_channels,
-            hidden_channels=params.width,
-            activation=F.gelu,
-            norm=params.preactivation,
-            rotation=False,
-        )
-    elif params.NN == "CNL3d":
-        model = CliffordMaxwellNet3d(
-            g=[1, 1, 1],
-            block=partialclass(
-                "CliffordFourierBasicBlock3d",
-                CliffordFourierBasicBlock3d,
-                modes1=params.modes,
-                modes2=params.modes,
-                modes3=params.modes,
-            ),
-            num_blocks=[1, 1, 1, 1],
-            in_channels=4,
-            out_channels=1,
-            hidden_channels=params.width,
-            activation=F.gelu,
-            norm=False,
-        )
+    # elif params.NN == "CNL2d":
+    #     return CliffordFluidNet2d(
+    #         g=params.g,
+    #         block=partialclass(
+    #             "CliffordFourierBasicBlock2d",
+    #             CliffordFourierBasicBlock2d,
+    #             modes1=params.modes,
+    #             modes2=params.modes,
+    #         ),
+    #         num_blocks=[1, 1, 1, 1],
+    #         in_channels=params.input_channels,
+    #         out_channels=params.output_channels,
+    #         hidden_channels=params.width,
+    #         activation=F.gelu,
+    #         norm=params.preactivation,
+    #         rotation=False,
+    #     )
+    # elif params.NN == "CNL3d":
+    #     return CliffordMaxwellNet3d(
+    #         g=[1, 1, 1],
+    #         block=partialclass(
+    #             "CliffordFourierBasicBlock3d",
+    #             CliffordFourierBasicBlock3d,
+    #             modes1=params.modes,
+    #             modes2=params.modes,
+    #             modes3=params.modes,
+    #         ),
+    #         num_blocks=[1, 1, 1, 1],
+    #         in_channels=4,
+    #         out_channels=1,
+    #         hidden_channels=params.width,
+    #         activation=F.gelu,
+    #         norm=False,
+    #     )
     elif params.NN == "UNet":
-        model = UNet2d(params.input_channels, params.output_channels, params.width)
+        return UNet2d(params.input_channels, params.output_channels, params.width)
     elif params.NN == "UNO":
         powers = [i for i in range(params.n_layers // 2)]
         powers = powers + powers[::-1]
         if params.n_layers % 2 == 1:
             powers.insert(params.n_layers // 2, params.n_layers // 2)
-        scalings = [[1, 1, 1] ]* params.n_layers
+        scalings = [[1, 1, 1]] * params.n_layers
         if params.n_layers > 2:
             scalings[1] = [0.5, 0.5, 0.5]
             scalings[-1] = [2, 2, 2]
-        model = UNO(
-            in_channels=params.input_channels,
-            out_channels=params.output_channels,
-            uno_n_modes=[[params.modes] * params.d] * params.n_layers,
-            uno_out_channels=[params.width * 2**p for p in powers],
-            uno_scalings=scalings,
-            hidden_channels=params.width,
-            n_layers=params.n_layers,
-            use_mlp=False,
-            mlp_dropout=params.mlp_dropout,
-            preactivation=params.preactivation,
-            skip=params.skip_type,
-        )
+            return UNO(
+                in_channels=params.input_channels,
+                out_channels=params.output_channels,
+                uno_n_modes=[[params.modes] * params.d] * params.n_layers,
+                uno_out_channels=[params.width * 2**p for p in powers],
+                uno_scalings=scalings,
+                hidden_channels=params.width,
+                n_layers=params.n_layers,
+                use_mlp=False,
+                mlp_dropout=params.mlp_dropout,
+                preactivation=params.preactivation,
+                skip=params.skip_type,
+            )
+        elif params.n_layers == 3:
+            m = params.modes
+            w = params.width
+            return UNO(
+                in_channels=params.input_channels,
+                out_channels=params.output_channels,
+                projection_channels=128,
+                lifting_channels=128,
+                uno_n_modes=[[m, m, m], [m // 2, m // 2, m // 2], [m, m, m]],
+                uno_out_channels=[w, w * 3 // 2, w],
+                uno_scalings=scalings,
+                hidden_channels=params.width,
+                n_layers=params.n_layers,
+                use_mlp=False,
+                mlp_dropout=params.mlp_dropout,
+                preactivation=params.preactivation,
+                skip=params.skip_type,
+            )
 
     logger.debug(model)
     if params.level == "DEBUG":
