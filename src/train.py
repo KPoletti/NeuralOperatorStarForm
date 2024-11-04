@@ -291,7 +291,7 @@ class Trainer(object):
             target = sample["y"]
 
             for t in range(0, target.shape[-1], step):
-                targ_t = target[..., t : t + step].squeeze(-1).to(self.device)
+                targ_t = target[..., t : t + step].to(self.device)
                 pred_t = self.model(data)
                 data = pred_t
 
