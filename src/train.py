@@ -15,7 +15,7 @@ import wandb
 from torch import nn
 import torch.distributed as dist
 from neuralop import LpLoss, H1Loss
-from neuralop.datasets.transforms import PositionalEmbedding2D
+from neuralop.layers.embeddings import GridEmbedding2D
 from neuralop.utils import count_model_params
 
 sns.set_color_codes(palette="deep")
@@ -58,20 +58,13 @@ def dataVisibleCheck(
         save: directory to save the plots
     """
     # check if FNO3d is in save
-    if "RNN3d" in save:
-        target = target.squeeze()
-        output = output.squeeze()
-
-        target = target.permute(0, 4, 1, 2, 3)
-        output = output.permute(0, 4, 1, 2, 3)
-        target = target.sum(dim=-1)
-        output = output.sum(dim=-1)
-    elif (
+    if (
         "FNO3d" in save
         or "CNL2d" in save
         or "RNN" in save
         or "UNO" in save
         or "UNet" in save
+        or "RNN3d" in save
     ):
         # permute to get variable on the end
         target = target.permute(0, 4, 2, 3, 1)
@@ -150,14 +143,13 @@ class Trainer(object):
         self.epochs_run = 0
         self.ckp_path = ckp_path
         self.do_animate = (self.device != 0) * self.params.use_ddp
-        print(self.do_animate)
         # initialize the loss function
         ntrain = int((self.params.split[0] * self.params.N))
         self.loss = self.params.loss_fn
         warmup_ep = self.params.epochs * 5 // 100
 
         iterations = (
-            (self.params.epochs - warmup_ep)
+            (self.params.epochs)
             * (ntrain // self.params.batch_size)
             // self.params.cosine_step
         )
@@ -308,10 +300,12 @@ class Trainer(object):
                     pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
                     targ_t = output_encoder.decode(targ_t.unsqueeze(-1)).squeeze(-1)
                 loss += self.loss(pred_t.float(), targ_t)
+                if "RNN3d" not in self.params.NN:
+                    pred_t = pred_t.unsqueeze(-1)
                 if t == 0:
-                    pred = pred_t.unsqueeze(-1).to("cpu")
+                    pred = pred_t.to("cpu")
                 else:
-                    pred = torch.cat((pred, pred_t.unsqueeze(-1).to("cpu")), dim=-1)
+                    pred = torch.cat((pred, pred_t.to("cpu")), dim=-1)
                 del pred_t, targ_t
             train_loss += loss.item()
             # Backpropagate the loss
@@ -514,28 +508,28 @@ class Trainer(object):
             # early stopping
             avg_diff[idx] = test_lp - old_test
             idx = (idx + 1) % 5
-            if (epoch >= 0.5 * self.params.epochs) and np.abs(
-                old_test - test_lp
-            ) <= 1e-6:
-                print(
-                    "EARLY STOPPING CRITERIA MET ON EPOCH",
-                    epoch,
-                    "on device",
-                    self.device,
-                )
-                early_stop += 1
-            elif (epoch >= 0.5 * self.params.epochs) and avg_diff.mean() > 1e-3:
-                print(
-                    "EARLY STOPPING OVERFITTING CRITERIA MET ON EPOCH",
-                    epoch,
-                    "on device",
-                    self.device,
-                )
-                early_stop += 1
-            if self.params.use_ddp:
-                dist.all_reduce(early_stop, op=dist.ReduceOp.SUM)
-            if early_stop != 0:
-                break
+            # if (epoch >= 0.5 * self.params.epochs) and np.abs(
+            #     old_test - test_lp
+            # ) <= 1e-6:
+            #     print(
+            #         "EARLY STOPPING CRITERIA MET ON EPOCH",
+            #         epoch,
+            #         "on device",
+            #         self.device,
+            #     )
+            #     early_stop += 1
+            # elif (epoch >= 0.5 * self.params.epochs) and avg_diff.mean() > 1e-3:
+            #     print(
+            #         "EARLY STOPPING OVERFITTING CRITERIA MET ON EPOCH",
+            #         epoch,
+            #         "on device",
+            #         self.device,
+            #     )
+            #     early_stop += 1
+            # if self.params.use_ddp:
+            #     dist.all_reduce(early_stop, op=dist.ReduceOp.SUM)
+            # if early_stop != 0:
+            #     break
             old_test = test_lp
 
         # fine_tune(self.model, self.params, self.device, self.optimizer, self.scheduler)
@@ -557,6 +551,11 @@ class Trainer(object):
         savename,
     ):
         num_samples = prediction.shape[0]
+        if len(time_data) != num_samples:
+            num_samples = min(num_samples, len(time_data))
+            time_data = time_data[:num_samples]
+            prediction = prediction[:num_samples]
+            truth = truth[:num_samples]
         dims_to_rmse = tuple(range(-num_dims + 1, 0))
 
         logger.debug(dims_to_rmse)
@@ -789,7 +788,7 @@ class Trainer(object):
         sample = next(iter(data_loader))
         data = sample["x"].to(self.device)
         target = sample["y"].to(self.device)
-        lentime = len(sample["meta_y"]["time"]) - 1
+        lentime = len(sample["meta_y"]["time"])
         size = [num_samples] + [d for d in target.shape if d != 1]
 
         # initialize
@@ -812,7 +811,7 @@ class Trainer(object):
         rand_point = np.random.randint(0, len(data_loader))
         transform = None
         if self.params.positional_encoding:
-            transform = PositionalEmbedding2D(self.params.grid_boundaries, 0)
+            transform = GridEmbedding2D(self.params.grid_boundaries, 0)
         roll_steps = 0
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
@@ -823,7 +822,7 @@ class Trainer(object):
                 cur_mass = meta_data["mass"][0]
                 target = sample["y"].to(self.device)
                 data = sample["x"].to(self.device).squeeze(-1)
-                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"][1:])
+                time_data[batchidx] = torch.tensor(sample["meta_y"]["time"])
                 if roll_steps == 0:
                     roll_t = data.clone()
                 elif cur_mass != mass:
@@ -838,19 +837,22 @@ class Trainer(object):
                     # apply the model to previous output
                     roll_t = self.model(roll_t)
                     data = pred_t
+                    roll_decode = roll_t
                     if output_encoder is not None:
                         pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
                         roll_decode = output_encoder.decode(
-                            roll_t.unsqueeze(-1)
+                            roll_decode.unsqueeze(-1)
                         ).squeeze(-1)
+
+                    if "RNN3d" not in self.params.NN:
+                        pred_t = pred_t.unsqueeze(-1)
+                        roll_decode = roll_decode.unsqueeze(-1)
                     if t == 0:
-                        pred_full = pred_t.unsqueeze(-1)
-                        roll_full = roll_decode.unsqueeze(-1)
+                        pred_full = pred_t
+                        roll_full = roll_decode
                     else:
-                        pred_full = torch.cat((pred_full, pred_t.unsqueeze(-1)), dim=-1)
-                        roll_full = torch.cat(
-                            (roll_full, roll_decode.unsqueeze(-1)), dim=-1
-                        )
+                        pred_full = torch.cat((pred_full, pred_t), dim=-1)
+                        roll_full = torch.cat((roll_full, roll_decode), dim=-1)
 
                     loss_pred += self.test_loss_lp(pred_t.float(), targ_t)
                     loss_roll += self.test_loss_lp(roll_decode.float(), targ_t)
@@ -862,10 +864,13 @@ class Trainer(object):
                 test_pred += loss_pred.item()
                 test_roll += loss_roll.item()
                 # assign the values to the tensors
+                data_0 = sample["x"].to(self.device)
                 if input_encoder is not None:
-                    data_0 = input_encoder.decode(sample["x"].to(self.device))
+                    data_0 = input_encoder.decode(data_0)
                 pred[batchidx] = pred_full
-                in_data[batchidx] = torch.cat((data_0, pred_full[..., :-1]), dim=-1)
+                in_data[batchidx] = torch.cat(
+                    (data_0, pred_full[..., : -self.params.T_in]), dim=-1
+                )
                 truth[batchidx] = target
                 roll[batchidx] = roll_full
 
@@ -881,6 +886,7 @@ class Trainer(object):
 
         time_data = time_data.flatten()
         print(f"pred shape: {pred.shape}")
+        self.log_RMSE(pred, truth)
         if len(savename) > 0:
             data_save = f"results/{self.params.path}/data/{savename}.mat"
             print(
@@ -965,7 +971,7 @@ class Trainer(object):
         rand_point = np.random.randint(0, len(data_loader))
         transform = None
         if self.params.positional_encoding:
-            transform = PositionalEmbedding2D(self.params.grid_boundaries, 0)
+            transform = GridEmbedding2D(self.params.grid_boundaries, 0)
         with torch.no_grad():
             for batchidx, sample in enumerate(data_loader):
                 data, target = sample["x"].to(self.device), sample["y"].to(self.device)

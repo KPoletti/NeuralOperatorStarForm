@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 import torch
-from neuralop.datasets.transforms import PositionalEmbedding2D
+from neuralop.layers.embeddings import GridEmbedding2D
 from neuralop.utils import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
 from torch.utils.data.distributed import DistributedSampler
@@ -162,6 +162,37 @@ def logData(data: torch.tensor, params: dataclass) -> torch.tensor:
     return data
 
 
+def nondimensionalize(data: torch.tensor) -> torch.tensor:
+    """
+    Removes dimension on data.
+    Input:
+        data: torch.tensor data to log
+    Output:
+        data: torch.tensor data after logging
+    """
+    print("#######################################################")
+    print("Dimensional Range")
+    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
+    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
+    print("#######################################################")
+    mass_scale = 600 * 1.989e33  # 600 M_sun in grams
+    length_scale = 2.5 * 3.086e18  # 2.5 pc in cm
+    time_scale = 8.29 * 3600 * 24 * 365 * 1e3  # 8.29kyr in secs
+    surf_density_scale = mass_scale / length_scale**2
+    # create a length scale for km since velocity is in km/s
+    length_scale_km = length_scale * 1e-05  # km
+    velocity_scale = length_scale_km / time_scale
+    # remove dimensions
+    data[..., 0, :] /= surf_density_scale
+    data[..., 1:, :] /= velocity_scale
+    print("#######################################################")
+    print("Nondimensional Range")
+    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
+    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
+    print("#######################################################")
+    return data
+
+
 def loadData(params: dataclass, is_data: bool) -> tuple:
     """
     Load data from the path specified in the input file
@@ -183,6 +214,7 @@ def loadData(params: dataclass, is_data: bool) -> tuple:
     if is_data:
         filename = params.TRAIN_PATH
         full_data = torch.load(filename)
+        # full_data = nondimensionalize(full_data)
         full_data = full_data.float()
         # reduce to density
         full_data = reduceToDensity(full_data, params)
@@ -263,6 +295,9 @@ def timestepSplit(
         # find the keys that correspond to the time step to use t+{dN-1}
         keys_a = [key for key in keys if int(key.split("+")[1]) <= params.T_in - 1]
         keys_u = [key for key in keys if int(key.split("+")[1]) > params.T_out]
+        if "RNN" in params.NN or "UNet" in params.NN:
+            keys_u = [key for key in keys if int(key.split("+")[1]) > params.T_out - 1]
+
         # split the dataframe
         data_info_a = data_info[keys_a]
         data_info_u = data_info[keys_u]
@@ -389,9 +424,9 @@ def permuteFNO3d(data: torch.tensor, params) -> torch.Tensor:
     Returns:
         torch.tensor: permuted data
     """
-    if "RNN3d" in params.NN:
-        return data.unsqueeze(1)
-    elif "Ints" in params.DATA_PATH:
+    # if "RNN3d" in params.NN:
+    #     return data.unsqueeze(1)
+    if "Ints" in params.DATA_PATH:
         return data.permute(0, 4, 1, 2, 3)
     return data.permute(0, 3, 1, 2, 4)
 
@@ -465,6 +500,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
     elif "GravColl" in params.data_name or "Turb" in params.data_name:
+        print("WARNING: Using MultiVariableNormalizer")
         input_encoder = MultiVariableNormalizer(data_a, verbose=verbosity)
         output_encoder = MultiVariableNormalizer(data_u, verbose=verbosity)
     else:
@@ -577,7 +613,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         dfTolist(train_time_a),
         dfTolist(train_time_u),
         transform_x=(
-            PositionalEmbedding2D(params.grid_boundaries, 0)
+            GridEmbedding2D(params.grid_boundaries, 0)
             if params.positional_encoding
             else None
         ),
@@ -588,7 +624,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         dfTolist(tests_time_a),
         dfTolist(tests_time_u),
         transform_x=(
-            PositionalEmbedding2D(params.grid_boundaries, 0)
+            GridEmbedding2D(params.grid_boundaries, 0)
             if params.positional_encoding
             else None
         ),
@@ -599,7 +635,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
         dfTolist(valid_time_a),
         dfTolist(valid_time_u),
         transform_x=(
-            PositionalEmbedding2D(params.grid_boundaries, 0)
+            GridEmbedding2D(params.grid_boundaries, 0)
             if params.positional_encoding
             else None
         ),
