@@ -1,5 +1,6 @@
 """This module contains functions for plotting the data. 
 """
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -74,7 +75,7 @@ def Animation_true_pred_error(
     savePath,
     out_times,
     mass,
-    error_type="absErr",
+    error_type="rel",
     fps=25,
     device=0,
 ):
