@@ -55,7 +55,7 @@ def main(params):
         fact = "None"
     path = (
         f"SF_{params.NN}_{params.data_name}_ep{params.epochs}"
-        f"_m{params.modes}_w{params.width}_lp{params.dim_high}_S{params.S}_Lrs{params.n_layers}"
+        f"_m{params.modes}_w{params.width}_S{params.S}_Lrs{params.n_layers}"
         f"_E{params.encoder}_MLP{params.use_mlp}_N{N}_Fact{fact}"
     )
     params.path = path
@@ -173,8 +173,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     print(f"Found {torch.cuda.device_count()} GPUs")
     ######### input parameters #########
-    parser.add_argument(
-        "--input", type=str, default="input", help="input file")
+    parser.add_argument("--input", type=str, default="input_RNN_MHD", help="input file")
     params = __import__(parser.parse_args().input)
     parser.add_argument("--N", type=int, default=params.N, help="Number of Data points")
     main(params)

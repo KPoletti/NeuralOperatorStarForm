@@ -535,14 +535,13 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         print("WARNING: Using MultiVariableNormalizer")
         input_encoder = MultiVariableNormalizer(data_a, verbose=verbosity)
         output_encoder = MultiVariableNormalizer(data_u, verbose=verbosity)
+    elif ("RNN" in params.NN) or ("UNet" in params.NN):
+
+        output_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     else:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
         output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
 
-    input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
-    output_encoder = UnitGaussianNormalizer(data_u, verbose=verbosity)
-    if ("RNN" in params.NN) or ("UNet" in params.NN):
-        output_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     return input_encoder, output_encoder
 
 
@@ -621,7 +620,8 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     else:
         output_encoder = None
         input_encoder = None
-
+    if params.encoder and "RNN" in params.NN:
+        output_encoder = input_encoder
     # define the grid
     logger.debug("Train Data A Shape: %s", train_data_a.shape)
     logger.debug("Train Data U Shape: %s", train_data_u.shape)

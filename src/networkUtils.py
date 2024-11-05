@@ -181,7 +181,6 @@ def initializeNetwork(params) -> nn.Module:
             n_modes_depth=params.modes,
             n_modes_width=params.modes,
             n_modes_height=params.modes,
-            # max_n_modes=(60, 60, 40),
             hidden_channels=params.width,
             projection_channels=params.dim_high,
             lifting_channels=params.dim_high,

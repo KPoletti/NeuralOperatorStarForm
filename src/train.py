@@ -294,13 +294,13 @@ class Trainer(object):
                 targ_t = target[..., t : t + step].to(self.device)
                 pred_t = self.model(data)
                 data = pred_t
-
-                if output_encoder is not None:
-                    pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
-                    targ_t = output_encoder.decode(targ_t.unsqueeze(-1)).squeeze(-1)
-                loss += self.loss(pred_t.float(), targ_t)
                 if "RNN3d" not in self.params.NN:
                     pred_t = pred_t.unsqueeze(-1)
+                if output_encoder is not None:
+                    pred_t = output_encoder.decode(pred_t).squeeze(-1)
+                    targ_t = output_encoder.decode(targ_t).squeeze(-1)
+                loss += self.loss(pred_t.float(), targ_t)
+
                 if t == 0:
                     pred = pred_t.to("cpu")
                 else:
@@ -345,7 +345,7 @@ class Trainer(object):
                     pred_t = self.model(data)
                     data = pred_t
                     if output_encoder is not None:
-                        pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
+                        pred_t = output_encoder.decode(pred_t).squeeze(-1)
                     h1_loss += self.test_loss_h1(pred_t.float(), targ_t)
                     l2_loss += self.test_loss_lp(pred_t.float(), targ_t)
 
@@ -512,10 +512,9 @@ class Trainer(object):
             # early stopping
             avg_diff[idx] = test_lp - old_test
             idx = (idx + 1) % 5
-            if (
-                (epoch >= 0.45 * self.params.epochs)
-                and np.abs(old_test - test_lp) <= 1e-4
-            ):
+            if (epoch >= 0.45 * self.params.epochs) and np.abs(
+                old_test - test_lp
+            ) <= 1e-4:
                 print(
                     "EARLY STOPPING CRITERIA MET ON EPOCH",
                     epoch,
@@ -523,10 +522,7 @@ class Trainer(object):
                     self.device,
                 )
                 early_stop += 1
-            elif (
-                (epoch >= 0.45 * self.params.epochs)
-                and avg_diff.mean() > 1e-3
-            ):
+            elif (epoch >= 0.45 * self.params.epochs) and avg_diff.mean() > 1e-3:
                 print(
                     "EARLY STOPPING OVERFITTING CRITERIA MET ON EPOCH",
                     epoch,
