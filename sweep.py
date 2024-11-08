@@ -133,7 +133,7 @@ def main(config=None):
         ################################################################
         logger.info("........Testing neural network........")
         # test neural network
-        if params.NN == "RNN" or params.NN == "UNet":
+        if  "RNN" in params.NN or params.NN == "UNet":
             Trainer.evaluate_RNN(
                 validLoader,
                 output_encoder=output_encoder,

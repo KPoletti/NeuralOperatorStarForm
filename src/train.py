@@ -293,19 +293,27 @@ class Trainer(object):
             for t in range(0, target.shape[-1], step):
                 targ_t = target[..., t : t + step].to(self.device)
                 pred_t = self.model(data)
+                # store the output as the next input
                 data = pred_t
+                # remove extra dimension required by 2d models
                 if "RNN3d" not in self.params.NN:
                     pred_t = pred_t.unsqueeze(-1)
+                
+                
                 if output_encoder is not None:
                     pred_t = output_encoder.decode(pred_t).squeeze(-1)
                     targ_t = output_encoder.decode(targ_t).squeeze(-1)
                 loss += self.loss(pred_t.float(), targ_t)
 
                 if t == 0:
+                    # initialize the full pred matrix
                     pred = pred_t.to("cpu")
                 else:
+                    # append the current outpt to the full prediction matrix
                     pred = torch.cat((pred, pred_t.to("cpu")), dim=-1)
+                # delete for efficiency
                 del pred_t, targ_t
+            # add to running loss for loggin
             train_loss += loss.item()
             # Backpropagate the loss
             self.optimizer.zero_grad(set_to_none=True)
@@ -851,10 +859,8 @@ class Trainer(object):
                     data = pred_t
                     roll_decode = roll_t
                     if output_encoder is not None:
-                        pred_t = output_encoder.decode(pred_t.unsqueeze(-1)).squeeze(-1)
-                        roll_decode = output_encoder.decode(
-                            roll_decode.unsqueeze(-1)
-                        ).squeeze(-1)
+                        pred_t = output_encoder.decode(pred_t)
+                        roll_decode = output_encoder.decode(roll_decode)
 
                     if "RNN3d" not in self.params.NN:
                         pred_t = pred_t.unsqueeze(-1)
