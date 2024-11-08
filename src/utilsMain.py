@@ -620,6 +620,8 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     else:
         output_encoder = None
         input_encoder = None
+        
+    # redefine the output encoder to match the input size of the input encoder
     if params.encoder and "RNN" in params.NN:
         output_encoder = input_encoder
     # define the grid
@@ -630,13 +632,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     logger.debug("Valid Data A Shape: %s", valid_data_a.shape)
     logger.debug("Valid Data U Shape: %s", valid_data_u.shape)
 
-    # Assert that the data is the correct shape
-    try:
-        assert train_data_a.shape == train_data_u.shape
-        assert tests_data_a.shape == tests_data_u.shape
-        assert valid_data_a.shape == valid_data_u.shape
-    except AssertionError:
-        logger.error("Data shapes do not match. Manually fixing.")
+
 
     # Load the data into a tensor dataset
     train_dataset = TensorDataset(
