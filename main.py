@@ -113,6 +113,9 @@ def main(params):
     netTime = time.time()
     # create neural network
     model = myNet.initializeNetwork(params)
+    logging.debug(model)
+    if params.level == "DEBUG":
+        print(model)
     wandb.config["Model-Num-Params"] = count_model_params(model)
 
     # params.batch_size = torch.cuda.device_count() * params.batch_size
@@ -158,7 +161,7 @@ def main(params):
             savename="ValidationData",
         )
     print(f"Output folder for {path}")
-    os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")  # pyright: ignore
+    os.popen(f"cp {run.dir}/config.yaml results/{params.path}/")  # pyright: ignore    
     run.finish()  # pyright: ignore
 
 
