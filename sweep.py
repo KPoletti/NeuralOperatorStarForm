@@ -126,6 +126,9 @@ def main(config=None):
             Trainer = myTrain.Trainer(
                 model=model, params=params, device=device, save_every=20
             )
+        logger.debug(model)
+        if params.level == "DEBUG":
+            print(model)
         Trainer.train(trainLoader, testLoader, output_encoder, sweep=True)
 
         ################################################################
