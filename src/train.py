@@ -308,9 +308,11 @@ class Trainer(object):
                 if t == 0:
                     # initialize the full pred matrix
                     pred = pred_t.to("cpu")
+                    targ = targ_t.to("cpu")
                 else:
                     # append the current outpt to the full prediction matrix
                     pred = torch.cat((pred, pred_t.to("cpu")), dim=-1)
+                    targ = torch.cat((targ, targ_t.to("cpu")), dim=-1)
                 # delete for efficiency
                 del pred_t, targ_t
             # add to running loss for loggin
@@ -326,7 +328,7 @@ class Trainer(object):
             if batch_idx == rand_point and epoch == self.save_every:
                 savename = f"{self.plot_path}/Train_decoded_b{batch_idx}_ep{epoch}"
                 dataVisibleCheck(
-                    target,
+                    targ,
                     pred,
                     sample["meta_y"],
                     f"{savename}",
@@ -761,6 +763,12 @@ class Trainer(object):
         size = prediction.shape
         num_dims = len(prediction.shape)
         # find the first index where grid is
+        if self.params.log:
+            base = torch.tensor(10.0)
+            prediction[:,0] = base.pow(prediction[:,0])
+            truth[:,0] = base.pow(truth[:,0])
+
+        
 
         dims_to_rmse = [i for i in range(num_dims) if size[i] == self.params.S]
         # dims_to_rmse = tuple(range(ind_grid[0], num_dims))
@@ -909,7 +917,6 @@ class Trainer(object):
                     "average-forward-time": forward_avg,
                 }
             )
-        self.log_RMSE(pred, truth)
 
         time_data = time_data.flatten()
         print(f"pred shape: {pred.shape}")
