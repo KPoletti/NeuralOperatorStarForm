@@ -211,40 +211,6 @@ def initializeNetwork(params) -> nn.Module:
             n_layers=params.n_layers,
             skip=params.skip_type,
         )
-    # elif params.NN == "CNL2d":
-    #     return CliffordFluidNet2d(
-    #         g=params.g,
-    #         block=partialclass(
-    #             "CliffordFourierBasicBlock2d",
-    #             CliffordFourierBasicBlock2d,
-    #             modes1=params.modes,
-    #             modes2=params.modes,
-    #         ),
-    #         num_blocks=[1, 1, 1, 1],
-    #         in_channels=params.input_channels,
-    #         out_channels=params.output_channels,
-    #         hidden_channels=params.width,
-    #         activation=F.gelu,
-    #         norm=params.preactivation,
-    #         rotation=False,
-    #     )
-    # elif params.NN == "CNL3d":
-    #     return CliffordMaxwellNet3d(
-    #         g=[1, 1, 1],
-    #         block=partialclass(
-    #             "CliffordFourierBasicBlock3d",
-    #             CliffordFourierBasicBlock3d,
-    #             modes1=params.modes,
-    #             modes2=params.modes,
-    #             modes3=params.modes,
-    #         ),
-    #         num_blocks=[1, 1, 1, 1],
-    #         in_channels=4,
-    #         out_channels=1,
-    #         hidden_channels=params.width,
-    #         activation=F.gelu,
-    #         norm=False,
-    #     )
     elif params.NN == "UNet":
         return UNet2d(params.input_channels, params.output_channels, params.width)
     elif params.NN == "UNO":
@@ -257,15 +223,18 @@ def initializeNetwork(params) -> nn.Module:
         if params.n_layers > 2:
             scalings[1] = [0.5, 0.5, 0.5]
             scalings[-1] = [2, 2, 2]
+            print([params.width * 2**p for p in powers])
             return UNO(
                 in_channels=params.input_channels,
                 out_channels=params.output_channels,
+                projection_channels=params.dim_high,
+                lifting_channels=params.dim_high,
                 uno_n_modes=[[params.modes] * params.d] * params.n_layers,
                 uno_out_channels=[params.width * 2**p for p in powers],
                 uno_scalings=scalings,
                 hidden_channels=params.width,
                 n_layers=params.n_layers,
-                use_mlp=False,
+                channel_mlp_skip="linear",
                 mlp_dropout=params.mlp_dropout,
                 preactivation=params.preactivation,
                 skip=params.skip_type,
@@ -276,21 +245,18 @@ def initializeNetwork(params) -> nn.Module:
             return UNO(
                 in_channels=params.input_channels,
                 out_channels=params.output_channels,
-                projection_channels=128,
-                lifting_channels=128,
+                projection_channels=params.dim_high,
+                lifting_channels=params.dim_high,
                 uno_n_modes=[[m, m, m], [m // 2, m // 2, m // 2], [m, m, m]],
                 uno_out_channels=[w, w * 3 // 2, w],
                 uno_scalings=scalings,
                 hidden_channels=params.width,
                 n_layers=params.n_layers,
-                use_mlp=False,
+                channel_mlp_skip="linear",
                 mlp_dropout=params.mlp_dropout,
                 preactivation=params.preactivation,
                 skip=params.skip_type,
             )
 
-    logger.debug(model)
-    if params.level == "DEBUG":
-        print(model)
 
     return model
