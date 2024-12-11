@@ -1,4 +1,3 @@
-import torch
 import torch.nn.functional as F
 
 from neuralop.losses.finite_diff import central_diff_2d
@@ -36,12 +35,8 @@ class ContinuityLoss(object):
         drhodx, drhody = central_diff_2d(
             rho_old, [dx, dy], fix_x_bnd=True, fix_y_bnd=True
         )
-        du_xdx, _ = central_diff_2d(
-            u_x, [dx, dy], fix_x_bnd=True, fix_y_bnd=True
-        )
-        _, du_ydy = central_diff_2d(
-            u_y, [dx, dy], fix_x_bnd=True, fix_y_bnd=True
-        )
+        du_xdx, _ = central_diff_2d(u_x, [dx, dy], fix_x_bnd=True, fix_y_bnd=True)
+        _, du_ydy = central_diff_2d(u_y, [dx, dy], fix_x_bnd=True, fix_y_bnd=True)
         drhodt = -(rho_new - rho_old) / self.timestep
         div = drhodx * u_x + drhody * u_y + rho_old * (du_xdx + du_ydy)
         return self.loss(drhodt, div)

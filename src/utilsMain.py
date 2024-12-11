@@ -7,13 +7,19 @@ import logging
 from dataclasses import dataclass
 
 import pandas as pd
-import torch
 from neuralop.layers.embeddings import GridEmbedding2D
 from neuralop.utils import UnitGaussianNormalizer
+
+# pylint: disable=no-name-in-module
+# pylint: disable=import-error
 from src.meta_dataset import TensorDataset
+
+# pylint: enable=import-error
+# pylint: enable=no-name-in-module
+import torch
+import torch.nn.functional as F
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
-
 import wandb
 
 # initialize logger
@@ -62,9 +68,10 @@ def averagePooling(data: torch.Tensor, params: dataclass) -> torch.Tensor:
         return data
     logger.debug("Pooling data with kernel size %d", params.poolKernel)
     # permute the data to pool across density
+    # pylint: disable=not-callable
     if len(data.shape) == 4:
         data = data.permute(0, 3, 1, 2)
-        data = torch.nn.functional.avg_pool2d(
+        data = F.avg_pool2d(
             data, kernel_size=params.poolKernel, stride=params.poolStride
         )
         # permute the data back to the original shape
@@ -72,10 +79,10 @@ def averagePooling(data: torch.Tensor, params: dataclass) -> torch.Tensor:
     elif len(data.shape) == 5:
         kernel = (1, params.poolKernel, params.poolKernel)
         stride = (1, params.poolStride, params.poolStride)
-        data = data.permute(0, 3, 4, 1, 2)
-        data = torch.nn.functional.avg_pool3d(data, kernel_size=kernel, stride=stride)
+        data = F.avg_pool3d(data, kernel_size=kernel, stride=stride)
         # permute the data back to the original shape
         data = data.permute(0, 3, 4, 1, 2)
+        # pylint: enable=not-callable
     return data
 
 
@@ -104,6 +111,7 @@ class Log10Normalizer:
         Output:
             data: the encoded data
         """
+        logger.info("Log10 Normalizing Data")
         if data.shape[-2] == 3:
             data[..., 0, :] = data[..., 0, :].log10()
             return data
@@ -118,6 +126,7 @@ class Log10Normalizer:
             data: the decoded data
         """
         base = torch.tensor(10.0)
+        logger.info("Log10 Decoding Data")
         if data.shape[-2] == 3:
             data[..., 0, :] = base.pow(data[..., 0, :])
             return base.pow(data)
@@ -167,15 +176,17 @@ def nondimensionalize(data: torch.tensor) -> torch.tensor:
     """
     Removes dimension on data.
     Input:
-        data: torch.tensor data to log
+        data: torch.tensor data to non-dimensionalize
     Output:
-        data: torch.tensor data after logging
+        data: torch.tensor data scaled to be non-dimensional
     """
-    print("#######################################################")
-    print("Dimensional Range")
-    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
-    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
-    print("#######################################################")
+    logger.debug("Dimensional Range")
+    logger.debug(
+        "Density: %0.3f to %0.3f", data[..., 0, :].min(), data[..., 0, :].max()
+    )
+    logger.debug(
+        "Velocity: %0.3f to %0.3f", data[..., 1:, :].min(), data[..., 1:, :].max()
+    )
     mass_scale = 600 * 1.989e33  # 600 M_sun in grams
     length_scale = 2.5 * 3.086e18  # 2.5 pc in cm
     time_scale = 8.29 * 3600 * 24 * 365 * 1e3  # 8.29kyr in secs
@@ -186,42 +197,13 @@ def nondimensionalize(data: torch.tensor) -> torch.tensor:
     # remove dimensions
     data[..., 0, :] /= surf_density_scale
     data[..., 1:, :] /= velocity_scale
-    print("#######################################################")
-    print("Nondimensional Range")
-    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
-    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
-    print("#######################################################")
-    return data
-
-
-def nondimensionalize(data: torch.tensor) -> torch.tensor:
-    """
-    Removes dimension on data.
-    Input:
-        data: torch.tensor data to log
-    Output:
-        data: torch.tensor data after logging
-    """
-    print(f"#######################################################")
-    print(f"Dimensional Range")
-    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
-    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
-    print(f"#######################################################")
-    mass_scale = 600 * 1.989e33  # 600 M_sun in grams
-    length_scale = 2.5 * 3.086e18  # 2.5 pc in cm
-    time_scale = 8.29 * 3600 * 24 * 365 * 1e3  # 8.29kyr in secs
-    surf_density_scale = mass_scale / length_scale**2
-    # create a length scale for km since velocity is in km/s
-    length_scale_km = length_scale * 1e-05  # km
-    velocity_scale = length_scale_km / time_scale
-    # remove dimensions
-    data[..., 0, :] /= surf_density_scale
-    data[..., 1:, :] /= velocity_scale
-    print(f"#######################################################")
-    print(f"Nondimensional Range")
-    print(f"Density: {data[..., 0, :].min():0.3f} to {data[..., 0, :].max():0.3f}")
-    print(f"Velocity: {data[..., 1:, :].min():0.3f} to {data[..., 1:, :].max():0.3f}")
-    print(f"#######################################################")
+    logger.debug("Nondimensional Range")
+    logger.debug(
+        "Density: %0.3f to %0.3f", data[..., 0, :].min(), data[..., 0, :].max()
+    )
+    logger.debug(
+        "Velocity: %0.3f to %0.3f", data[..., 1:, :].min(), data[..., 1:, :].max()
+    )
     return data
 
 
@@ -252,17 +234,15 @@ def loadData(params: dataclass, is_data: bool) -> tuple:
         full_data = reduceToDensity(full_data, params)
         # log the data
         full_data = logData(full_data, params)
-        # average pool the data
-        full_data = averagePooling(full_data, params)
         logger.debug(f"Full Data Shape: {full_data.shape}")
+        # average pool the data
+        return averagePooling(full_data, params)
     else:
         filename = params.TIME_PATH
         # load in data about each time step
-        full_data = pd.read_hdf(filename, "table")
-    # find the indices to split the data
-    # trainData, testData, validData = train_test_valid_split(params, fullData)
-    # del fullData
-    return full_data
+        return pd.read_hdf(filename, "table")
+
+    # return full_data
 
 
 def trainTestValidSplit(params: dataclass, data: torch.Tensor) -> tuple:
@@ -463,9 +443,7 @@ def permuteFNO3d(data: torch.tensor, params) -> torch.Tensor:
     return data.permute(0, 3, 1, 2, 4)
 
 
-def permuteFNO2d(
-    data: torch.tensor, params: dataclass, size: int, gridsize: int
-) -> torch.tensor:
+def permuteFNO2d(data: torch.tensor) -> torch.tensor:
     """Block permutes the data to the correct shape for the FNO2d network
 
     Args:
@@ -489,7 +467,7 @@ def permuteCNL2d(data: torch.tensor) -> torch.tensor:
     return data.permute(0, 4, 1, 2, 3)
 
 
-def permute(data, params, size, gridsize) -> torch.tensor:
+def permute(data: torch.tensor, params: dataclass) -> torch.tensor:
     """
     permute the data to the correct shape depending on the nn and the input file
     Input:
@@ -507,7 +485,7 @@ def permute(data, params, size, gridsize) -> torch.tensor:
         return permuteFNO3d(data, params)
 
     elif ("FNO2d" in params.NN) or ("MNO" in params.NN):
-        return permuteFNO2d(data, params, size, gridsize)
+        return permuteFNO2d(data)
 
     elif "CNL2d" in params.NN:
         return permuteCNL2d(data)
@@ -536,7 +514,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
         input_encoder = MultiVariableNormalizer(data_a, verbose=verbosity)
         output_encoder = MultiVariableNormalizer(data_u, verbose=verbosity)
     elif ("RNN" in params.NN) or ("UNet" in params.NN):
-
+        input_encoder = None
         output_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
     else:
         input_encoder = UnitGaussianNormalizer(data_a, verbose=verbosity)
@@ -545,7 +523,7 @@ def initializeEncoder(data_a, data_u, params: dataclass, verbosity=False) -> tup
     return input_encoder, output_encoder
 
 
-def prepareDataForTraining(params: dataclass, S: int) -> tuple:
+def prepareDataForTraining(params: dataclass) -> tuple:
     """
     1. Loads in the data,
     2. Splits it into training, testing, and validation subsets
@@ -586,8 +564,8 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     )
 
     # permute data to correct shape
-    full_data_a = permute(full_data_a, params, full_data_a.shape[0], S)
-    full_data_u = permute(full_data_u, params, full_data_u.shape[0], S)
+    full_data_a = permute(full_data_a, params)
+    full_data_u = permute(full_data_u, params)
 
     # split data into training, testing, and validation subsets
     train_data_a, tests_data_a, valid_data_a = trainTestValidSplit(params, full_data_a)
@@ -596,16 +574,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     train_time_a, tests_time_a, valid_time_a = trainTestValidSplit(params, time_data_a)
     train_time_u, tests_time_u, valid_time_u = trainTestValidSplit(params, time_data_u)
 
-    # TODO: Figure out how to include the timesteps in the
-    if params.level == "DEBUG":
-        print(f"Train Data Shape: {train_data_a.shape}")
-        print(f"Test Data Shape: {tests_data_a.shape}")
-        print(f"Valid Data Shape: {valid_data_a.shape}")
-        print("Outputs:")
-        print(f"Train Data Shape: {train_data_u.shape}")
-        print(f"Test Data Shape: {tests_data_u.shape}")
-        print(f"Valid Data Shape: {valid_data_u.shape}")
-
+    # Gaussian normalize the data
     if params.encoder:
         # initialize the encoder
         input_encoder, output_encoder = initializeEncoder(
@@ -620,7 +589,7 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     else:
         output_encoder = None
         input_encoder = None
-        
+
     # redefine the output encoder to match the input size of the input encoder
     if params.encoder and "RNN" in params.NN:
         output_encoder = input_encoder
@@ -631,8 +600,6 @@ def prepareDataForTraining(params: dataclass, S: int) -> tuple:
     logger.debug("Test Data U Shape: %s", tests_data_u.shape)
     logger.debug("Valid Data A Shape: %s", valid_data_a.shape)
     logger.debug("Valid Data U Shape: %s", valid_data_u.shape)
-
-
 
     # Load the data into a tensor dataset
     train_dataset = TensorDataset(

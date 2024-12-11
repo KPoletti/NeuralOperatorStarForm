@@ -110,7 +110,7 @@ def main(params):
         output_encoder,
         train_sampler,
         test_sampler,
-    ) = prepareDataForTraining(params, params.S)
+    ) = prepareDataForTraining(params)
     logging.info(f"Data loaded in {time.time() - dataTime} seconds")
 
     ################################################################
@@ -171,7 +171,7 @@ def main(params):
         logging.info("........Testing neural network........")
         # test neural network
         if params.NN == "RNN" or params.NN == "UNet":
-            Trainer.evaluate_RNN(
+            Trainer.evaluate_rnn(
                 validLoader,
                 output_encoder=output_encoder,
                 input_encoder=input_encoder,

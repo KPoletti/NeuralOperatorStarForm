@@ -149,7 +149,7 @@ def main(path, datapath, do_animate):
     # print(model.state_dict())
     Trainer = myTrain.Trainer(model=model, params=params, device=device, save_every=20)
     if "RNN" in params.NN:
-        Trainer.evaluate_RNN(
+        Trainer.evaluate_rnn(
             validLoader,
             output_encoder=output_encoder,
             input_encoder=input_encoder,

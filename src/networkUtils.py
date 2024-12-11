@@ -16,20 +16,9 @@ Exceptions:
 import logging
 
 
-from neuralop.models import FNO2d, FNO3d, UNO, FNO
+from neuralop.models import FNO2d, FNO3d, UNO
 
 import torch
-import torch.nn.functional as F
-
-# from cliffordlayers.models.basic.twod import (
-#     CliffordFourierBasicBlock2d,
-#     CliffordFluidNet2d,
-# )
-# from cliffordlayers.models.basic.threed import (
-#     CliffordFourierBasicBlock3d,
-#     CliffordMaxwellNet3d,
-# )
-# from cliffordlayers.models.utils import partialclass
 from torch import nn
 
 logger = logging.getLogger(__name__)
@@ -257,6 +246,5 @@ def initializeNetwork(params) -> nn.Module:
                 preactivation=params.preactivation,
                 skip=params.skip_type,
             )
-
 
     return model

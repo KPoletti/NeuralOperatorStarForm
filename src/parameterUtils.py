@@ -11,6 +11,10 @@ from neuralop import LpLoss, H1Loss
 def convertParamsToDict(params_obj):
     """
     Converts the params to a dictionary for wandb
+    Args:
+        params_obj (dataclass): the parameter object to configure the model
+    Returns:
+        dict: the parameter object as a dictionary
     """
     params_dict = {}
     unneeded = [
@@ -80,7 +84,6 @@ def set_Loss(params) -> LpLoss | H1Loss:
         raise ValueError(f"Loss {params.loss_name} not implemented")
 
 
-
 def loadConfig(path):
     """Load a config.yaml file.
 
@@ -140,7 +143,6 @@ def testConvertDictToNamespace():
     """Test convertDictToNamespace() function."""
     config = loadConfig("wandb/latest-run/files/config.yaml")
     config = convertDictToNamespace(config)
-    print(config.TRAIN_PATH)
     print(type(config))
 
 

@@ -92,7 +92,7 @@ def main(config=None):
             validLoader,
             input_encoder,
             output_encoder,
-        ) = prepareDataForTraining(params, params.S)
+        ) = prepareDataForTraining(params)
         logger.info(f"Data loaded in {time.time() - dataTime} seconds")
         # initialize device
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -129,15 +129,15 @@ def main(config=None):
         logger.debug(model)
         if params.level == "DEBUG":
             print(model)
-        Trainer.train(trainLoader, testLoader, output_encoder, sweep=True)
+        Trainer.train(trainLoader, testLoader, output_encoder)
 
         ################################################################
         # test neural network
         ################################################################
         logger.info("........Testing neural network........")
         # test neural network
-        if  "RNN" in params.NN or params.NN == "UNet":
-            Trainer.evaluate_RNN(
+        if "RNN" in params.NN or params.NN == "UNet":
+            Trainer.evaluate_rnn(
                 validLoader,
                 output_encoder=output_encoder,
                 input_encoder=input_encoder,

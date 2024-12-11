@@ -1,14 +1,14 @@
 """This module contains functions for plotting the data. 
 """
 
-
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
+import seaborn as sns
 from matplotlib import animation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import seaborn as sns
 from neuralop.utils import spectrum_2d
+
+import torch
 
 sns.set_style("white")
 
@@ -16,6 +16,21 @@ sns.set_style("white")
 def plot_timeStep_NoBounds(
     truthData, predcData, error, timeStep, save=False, saveName=""
 ):
+    """Generates a plot of the truth, prediction, and error data at a given time step.
+
+
+
+    Args:
+        truthData (torch.tensor): true timeseries data
+        predcData (torch.tensor): predicted timeseries data
+        error (torch.tensor): error between the true and predicted data
+        timeStep (int): the time step to plot
+        save (bool, optional): option to save the plot. Defaults to False.
+        saveName (str, optional): place to save the file under. Defaults to "".
+
+    Returns:
+        tuple: figure, axis, image of the truth, image of the prediction, image of the error
+    """
     fig, ax = plt.subplots(1, 3)
     fig.set_size_inches(20, 8)
     grid = 1.25
@@ -64,7 +79,6 @@ def plot_timeStep_NoBounds(
     )
     fig.tight_layout()
 
-    # fig.colorbar(im4, ax=ax[1, 0], shrink=0.57, label=r"Error ($\frac{g}{cm^2}$)")
     if save:
         fig.savefig(f"{saveName}.png")
     # plt.show()
@@ -76,11 +90,24 @@ def Animation_true_pred_error(
     predcData,
     savePath,
     out_times,
-    mass,
     error_type="rel",
     fps=25,
     device=0,
 ):
+    """Creates and saves an animation of the true, predicted, and error data for the density.
+
+    Args:
+        truthData (torch.tensor): The true data.
+        predcData (torch.tensor): The predicted data.
+        savePath (str): The path to save the animation.
+        out_times (list): The times of the data.
+        error_type (str, optional): option to plot either abosolute error,"abs", or relative error, "rel". Defaults to "rel".
+        fps (int, optional): frames per second. Defaults to 25.
+        device (int, optional): _description_. Defaults to 0.
+
+    Returns:
+        _type_: none
+    """
     if device != 0:
         return None
     truthData = truthData.cpu().detach().numpy()
@@ -161,16 +188,16 @@ def Animation_true_pred_error(
     error_sp = np.abs(truth_sp - pred_sp)
     # check the spectrum
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].semilogy(truth_sp, label=f"Truth ")
+    ax[0].semilogy(truth_sp, label="Truth")
     ax[0].semilogy(
         pred_sp,
         marker=".",
         markerfacecolor="None",
         # markeredgecolor=c[i],
         linestyle="None",
-        label=f"Prediction",
+        label="Prediction",
     )
-    ax[1].semilogy(error_sp, label=f"Error")
+    ax[1].semilogy(error_sp, label="Error")
 
     ax[0].set_xlabel("Wave Number")
     ax[0].set_ylabel("Power Spectrum")

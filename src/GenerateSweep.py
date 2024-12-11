@@ -1,4 +1,3 @@
-import input as params
 import json
 import os.path
 import sys
