@@ -30,7 +30,6 @@ def main(params):
     # initialize device
     torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device_id = rank % torch.cuda.device_count()
-    params.use_ddp = True
     for r in range(dist.get_world_size()):
         if r == dist.get_rank():
             print(
@@ -211,4 +210,5 @@ if __name__ == "__main__":
     parser.add_argument("--input", type=str, default="input", help="input file")
     params = __import__(parser.parse_args().input)
     parser.add_argument("--N", type=int, default=params.N, help="Number of Data points")
+    params.use_ddp = True
     main(params)

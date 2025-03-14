@@ -177,13 +177,11 @@ def initializeNetwork(params) -> nn.Module:
             norm=params.norm,
         )
     elif params.NN == "FNO3d" or params.NN == "RNN3d":
-        return FNO3d(
-            n_modes_depth=params.modes,
-            n_modes_width=params.modes,
-            n_modes_height=params.modes,
+        return FNO(
+            n_modes=(params.modes,params.modes,params.modes),
             hidden_channels=params.width,
-            projection_channels=params.dim_high,
-            lifting_channels=params.dim_high,
+            projection_channel_ratio=params.dim_high,
+            lifting_channel_ratio=params.dim_high,
             in_channels=params.input_channels,
             out_channels=params.output_channels,
             use_mlp=params.use_mlp,
@@ -197,6 +195,7 @@ def initializeNetwork(params) -> nn.Module:
             rank=params.rank,
             joint_factorization=True,
             norm=params.norm,
+            complex_data=False,
         )
     elif params.NN == "MNO":
         return FNO2d(
@@ -227,8 +226,8 @@ def initializeNetwork(params) -> nn.Module:
             return UNO(
                 in_channels=params.input_channels,
                 out_channels=params.output_channels,
-                projection_channels=params.dim_high,
-                lifting_channels=params.dim_high,
+                projection_channels=params.width*params.dim_high,
+                lifting_channels=params.width*params.dim_high,
                 uno_n_modes=[[params.modes] * params.d] * params.n_layers,
                 uno_out_channels=[params.width * 2**p for p in powers],
                 uno_scalings=scalings,
@@ -238,6 +237,8 @@ def initializeNetwork(params) -> nn.Module:
                 mlp_dropout=params.mlp_dropout,
                 preactivation=params.preactivation,
                 skip=params.skip_type,
+                complex_data=False,
+                fno_block_precision="mixed", 
             )
         elif params.n_layers == 3:
             m = params.modes
@@ -245,8 +246,8 @@ def initializeNetwork(params) -> nn.Module:
             return UNO(
                 in_channels=params.input_channels,
                 out_channels=params.output_channels,
-                projection_channels=params.dim_high,
-                lifting_channels=params.dim_high,
+                projection_channels=params.width*params.dim_high,
+                lifting_channels=params.width*params.dim_high,
                 uno_n_modes=[[m, m, m], [m // 2, m // 2, m // 2], [m, m, m]],
                 uno_out_channels=[w, w * 3 // 2, w],
                 uno_scalings=scalings,
@@ -256,6 +257,8 @@ def initializeNetwork(params) -> nn.Module:
                 mlp_dropout=params.mlp_dropout,
                 preactivation=params.preactivation,
                 skip=params.skip_type,
+                fno_block_precision="mixed",
+                complex_data=False,
             )
 
 

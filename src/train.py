@@ -248,16 +248,6 @@ class Trainer(object):
                 # decode the output
                 output = output_encoder.decode(output)
 
-            if batch_idx == rand_point and epoch == self.save_every:
-                savename = f"{self.plot_path}/Train_decoded_b{batch_idx}_ep{epoch}"
-                dataVisibleCheck(
-                    target,
-                    output,
-                    sample["meta_y"],
-                    f"{savename}",
-                    idx,
-                    device=self.do_animate,
-                )
 
             # compute the loss
             loss = self.loss(output, target)
@@ -273,6 +263,16 @@ class Trainer(object):
             if hasattr(self, "scheduler"):
                 self.scheduler.step()
             train_loss += loss.item()
+            if batch_idx == rand_point and epoch == self.save_every:
+                savename = f"{self.plot_path}/Train_decoded_b{batch_idx}_ep{epoch}"
+                dataVisibleCheck(
+                    target,
+                    output,
+                    sample["meta_y"],
+                    f"{savename}",
+                    idx,
+                    device=self.do_animate,
+                )
             del output, target, data, loss
 
         return train_loss
