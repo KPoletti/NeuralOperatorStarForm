@@ -12,6 +12,7 @@ from neuralop.utils import UnitGaussianNormalizer
 
 # pylint: disable=no-name-in-module
 # pylint: disable=import-error
+from neuralop.data.transforms.normalizers import UnitGaussianNormalizer
 from src.meta_dataset import TensorDataset
 
 # pylint: enable=import-error
@@ -227,7 +228,7 @@ def loadData(params: dataclass, is_data: bool) -> tuple:
     """
     if is_data:
         filename = params.TRAIN_PATH
-        full_data = torch.load(filename)
+        full_data = torch.load(filename,weights_only=True)
         # full_data = nondimensionalize(full_data)
         full_data = full_data.float()
         # reduce to density
@@ -361,12 +362,10 @@ class MultiVariableNormalizer:
         self.index = int([i for i, x in enumerate(self.shape) if x == 3][0])
         self.vel_index = torch.tensor([1, 2])
         self.rho_index = torch.tensor([0])
-        self.rho_encoder = UnitGaussianNormalizer(
-            data.index_select(self.index, self.rho_index), verbose=verbose
-        )
-        self.vel_encoder = UnitGaussianNormalizer(
-            data.index_select(self.index, self.vel_index), verbose=verbose
-        )
+        self.rho_encoder = UnitGaussianNormalizer()            
+        self.rho_encoder.partial_fit(data.index_select(self.index, self.rho_index))
+        self.vel_encoder = UnitGaussianNormalizer()
+        self.vel_encoder.partial_fit(data.index_select(self.index, self.vel_index))
 
     def encode(self, data):
         """
@@ -376,8 +375,8 @@ class MultiVariableNormalizer:
         Output:
             data: torch.tensor encoded data
         """
-        rho = self.rho_encoder.encode(data.index_select(self.index, self.rho_index))
-        vel = self.vel_encoder.encode(data.index_select(self.index, self.vel_index))
+        rho = self.rho_encoder.transform(data.index_select(self.index, self.rho_index))
+        vel = self.vel_encoder.transform(data.index_select(self.index, self.vel_index))
         # data[..., 0] = rho
         # data[..., 1:] = vel
         return torch.cat((rho, vel), dim=self.index)
@@ -390,8 +389,8 @@ class MultiVariableNormalizer:
         Output:
             data: torch.tensor decoded data
         """
-        rho = self.rho_encoder.decode(data.index_select(self.index, self.rho_index))
-        vel = self.vel_encoder.decode(data.index_select(self.index, self.vel_index))
+        rho = self.rho_encoder.inverse_transform(data.index_select(self.index, self.rho_index))
+        vel = self.vel_encoder.inverse_transform(data.index_select(self.index, self.vel_index))
         # data[..., 0] = rho
         # data[..., 1:] = vel
         return torch.cat((rho, vel), dim=self.index)
